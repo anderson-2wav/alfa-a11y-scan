@@ -2,6 +2,7 @@
   "name": "siteimprove-sitemap-checker",
   "version": "1.0.0",
   "description": "CLI tool to audit web accessibility using Siteimprove Alfa against all pages in an XML sitemap",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "start": ". .env; node --env-file=.env --max-old-space-size=8192 --import tsx src/cli.ts $SITEMAP -o $OUTPUT -f html -v --wait 3000 --timeout 30000",
