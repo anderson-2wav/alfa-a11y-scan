@@ -19,7 +19,9 @@
 // SOFTWARE.
 
 export interface CliOptions {
-  sitemapUrl: string;
+  sitemapUrl?: string;
+  urlsFile?: string;
+  baseUrl?: string;
   output: string;
   format: "csv" | "xlsx" | "json" | "html";
   concurrency: number;
@@ -31,6 +33,8 @@ export interface CliOptions {
   verbose: boolean;
   ignoreRules: string[];
   showWarnings: boolean;
+  jwtToken?: string;
+  jwtCookieName: string;
 }
 
 export interface ViolationRecord {
@@ -60,7 +64,7 @@ export interface PageResult {
 
 export interface AuditReport {
   generatedAt: string;
-  sitemapUrl: string;
+  sourceUrl: string;
   options: CliOptions;
   summary: {
     totalPages: number;

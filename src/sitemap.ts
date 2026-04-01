@@ -29,13 +29,23 @@ interface ParsedSitemap {
   sitemapindex?: { sitemap: SitemapEntry | SitemapEntry[] };
 }
 
+interface SitemapFetchOptions {
+  jwtToken?: string;
+  jwtCookieName?: string;
+}
+
 export async function fetchSitemapUrls(
   sitemapUrl: string,
-  filterPattern?: string
+  filterPattern?: string,
+  authOptions?: SitemapFetchOptions
 ): Promise<string[]> {
-  const response = await fetch(sitemapUrl, {
-    headers: { "User-Agent": "siteimprove-sitemap-checker/1.0" },
-  });
+  const headers: Record<string, string> = {
+    "User-Agent": "siteimprove-sitemap-checker/1.0",
+  };
+  if (authOptions?.jwtToken) {
+    headers["Cookie"] = `${authOptions.jwtCookieName ?? "token"}=${authOptions.jwtToken}`;
+  }
+  const response = await fetch(sitemapUrl, { headers });
 
   if (!response.ok) {
     throw new Error(
@@ -72,7 +82,7 @@ export async function fetchSitemapUrls(
       sitemapArray
         .map((s) => s?.loc)
         .filter((loc): loc is string => typeof loc === "string")
-        .map((loc) => fetchSitemapUrls(loc, filterPattern))
+        .map((loc) => fetchSitemapUrls(loc, filterPattern, authOptions))
     );
 
     return [...new Set(nestedUrls.flat())];
