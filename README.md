@@ -108,6 +108,8 @@ Both sitemap formats are supported:
 
 ## License
 
-Copyright (c) 2026 2wav inc.
+Copyright (C) 2026 2wav inc.
 
-Licensed under the [MIT License](https://opensource.org/licenses/MIT).
+This project is licensed under the [GNU Affero General Public License v3.0](https://www.gnu.org/licenses/agpl-3.0.html) (AGPL-3.0). You may use, modify, and distribute it freely under those terms — including requiring that any modifications remain open source, and that use as a network service also triggers source disclosure.
+
+**Commercial licensing:** If you need to incorporate this tool into a proprietary or closed-source product, contact [2wav](https://2wav.com) to obtain a commercial license.
