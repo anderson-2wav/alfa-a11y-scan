@@ -24,7 +24,7 @@ import { join, dirname } from "path";
 import ExcelJS from "exceljs";
 import type { AuditReport, CliOptions, PageResult, ViolationRecord } from "./types.js";
 
-export function buildReport(pages: PageResult[], options: CliOptions): AuditReport {
+export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl: string): AuditReport {
   const allViolations = pages.flatMap((p) => p.violations);
 
   const ruleCounts = new Map<string, { ruleTitle: string; count: number }>();
@@ -45,7 +45,7 @@ export function buildReport(pages: PageResult[], options: CliOptions): AuditRepo
 
   return {
     generatedAt: new Date().toISOString(),
-    sitemapUrl: options.sitemapUrl,
+    sourceUrl,
     options,
     summary: {
       totalPages: pages.length,
@@ -154,7 +154,7 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   const s = report.summary;
 
   summarySheet.addRow(["Generated", report.generatedAt]);
-  summarySheet.addRow(["Sitemap URL", report.sitemapUrl]);
+  summarySheet.addRow(["Source", report.sourceUrl]);
   summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options.wcagLevel)]);
   summarySheet.addRow([]);
   summarySheet.addRow([
@@ -243,6 +243,11 @@ async function writeJSON(report: AuditReport, outputPath: string): Promise<void>
   await writeFile(`${outputPath}.json`, JSON.stringify(report, null, 2), "utf-8");
 }
 
+function pageLink(url: string, baseUrl?: string): string {
+  const href = url.startsWith("http") ? url : `${(baseUrl ?? "").replace(/\/$/, "")}${url}`;
+  return `<a href="${escapeHtml(href)}" target="_blank" onclick="event.stopPropagation()">${escapeHtml(url)}</a>`;
+}
+
 async function writeHTML(report: AuditReport, outputPath: string): Promise<void> {
   const logoPath = join(dirname(fileURLToPath(import.meta.url)), "../images/2wav-logo-dark.svg");
   const logoBase64 = await readFile(logoPath, "base64").catch(() => "");
@@ -285,14 +290,14 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 
       if (page.status === "error") {
         return `<details>
-          <summary class="summary--error"><a href="${escapeHtml(page.url)}" target="_blank" onclick="event.stopPropagation()">${escapeHtml(page.url)}</a> <span class="tag tag--error">ERROR</span></summary>
+          <summary class="summary--error">${pageLink(page.url, report.options.baseUrl)} <span class="tag tag--error">ERROR</span></summary>
           <div class="details-content"><p class="error-msg">${escapeHtml(page.errorMessage ?? "Unknown error")}</p></div>
         </details>`;
       }
 
       if (page.violations.length === 0) {
         return `<details>
-          <summary class="summary--pass"><a href="${escapeHtml(page.url)}" target="_blank" onclick="event.stopPropagation()">${escapeHtml(page.url)}</a> <span class="tag tag--pass">0 issues</span></summary>
+          <summary class="summary--pass">${pageLink(page.url, report.options.baseUrl)} <span class="tag tag--pass">0 issues</span></summary>
           <div class="details-content"><p class="no-issues">No violations found.</p></div>
         </details>`;
       }
@@ -317,7 +322,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
           : `<span class="tag tag--cant-tell">${cantTellCount} cantTell</span>`;
 
       return `<details>
-        <summary><a href="${escapeHtml(page.url)}" target="_blank" onclick="event.stopPropagation()">${escapeHtml(page.url)}</a> ${label}${cantTellCount > 0 && failCount > 0 ? ` <span class="tag tag--cant-tell">${cantTellCount} cantTell</span>` : ""}</summary>
+        <summary>${pageLink(page.url, report.options.baseUrl)} ${label}${cantTellCount > 0 && failCount > 0 ? ` <span class="tag tag--cant-tell">${cantTellCount} cantTell</span>` : ""}</summary>
         <div class="details-content">
           <table>
             <thead><tr><th>Rule</th><th>WCAG</th><th>Outcome</th><th>XPath</th><th>Tag</th><th>Element HTML</th><th>Message</th></tr></thead>
@@ -333,7 +338,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Accessibility Audit Report — ${escapeHtml(report.sitemapUrl)}</title>
+  <title>Accessibility Audit Report — ${escapeHtml(report.sourceUrl)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; background: #f5f5f5; padding: 24px; }
@@ -382,7 +387,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   <h1>Accessibility Audit Report</h1>
   <p class="meta">
     Generated: ${escapeHtml(report.generatedAt)} &nbsp;|&nbsp;
-    Sitemap: <a href="${escapeHtml(report.sitemapUrl)}" target="_blank">${escapeHtml(report.sitemapUrl)}</a> &nbsp;|&nbsp;
+    Source: ${report.sourceUrl.startsWith("http") ? `<a href="${escapeHtml(report.sourceUrl)}" target="_blank">${escapeHtml(report.sourceUrl)}</a>` : escapeHtml(report.sourceUrl)} &nbsp;|&nbsp;
     WCAG Level: ${escapeHtml(formatWcagLevel(report.options.wcagLevel))}
   </p>
   <p class="about">

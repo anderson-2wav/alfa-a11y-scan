@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import { promises as fs } from "fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { chromium } from "playwright";
@@ -29,8 +30,7 @@ import type { CliOptions, PageResult } from "./types.js";
 
 const argv = await yargs(hideBin(process.argv))
   .scriptName("sitemap-checker")
-  .usage("Usage: $0 <sitemap-url> [options]")
-  .demandCommand(1, "Please provide a sitemap URL as the first argument.")
+  .usage("Usage: $0 [sitemap-url] [options]")
   .option("output", {
     alias: "o",
     type: "string",
@@ -78,13 +78,37 @@ const argv = await yargs(hideBin(process.argv))
     default: false,
     describe: "Print progress to console",
   })
+  .option("urls", {
+    type: "string",
+    describe: "Path to a JSON file containing an array of URLs to audit directly (bypasses sitemap)",
+  })
+  .option("base-url", {
+    type: "string",
+    describe: "Base URL (with scheme) prepended to relative paths in the URL file, e.g. https://example.com",
+  })
+  .option("jwt-token", {
+    type: "string",
+    describe: "JWT token to inject as a cookie on all page requests",
+  })
+  .option("jwt-cookie-name", {
+    type: "string",
+    default: "token",
+    describe: "Cookie name for the JWT token (default: token)",
+  })
+  .check((argv) => {
+    const hasSitemap = argv._.length > 0;
+    const hasUrls = !!(argv.urls || process.env.URLS);
+    if (!hasSitemap && !hasUrls)
+      throw new Error("Provide a sitemap URL (positional) or --urls / URLS env var (path to JSON file).");
+    return true;
+  })
   .help()
   .parseAsync();
 
-const sitemapUrl = String(argv._[0]);
-
 const options: CliOptions = {
-  sitemapUrl,
+  sitemapUrl: argv._.length > 0 ? String(argv._[0]) : undefined,
+  urlsFile: argv.urls ?? process.env.URLS,
+  baseUrl: argv["base-url"] ?? process.env.BASE_URL,
   output: argv.output,
   format: argv.format,
   concurrency: argv.concurrency ?? Number(process.env.CONCURRENCY ?? 3),
@@ -98,26 +122,61 @@ const options: CliOptions = {
     ? process.env.IGNORE_RULES.split(",").map((r) => r.trim()).filter(Boolean)
     : [],
   showWarnings: process.env.WARNINGS === "true",
+  jwtToken: argv["jwt-token"] ?? process.env.JWT_TOKEN,
+  jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
 };
 
 async function main(): Promise<void> {
-  console.log(`Fetching sitemap: ${sitemapUrl}`);
   let urls: string[];
-  try {
-    urls = await fetchSitemapUrls(sitemapUrl, options.filter);
-  } catch (err) {
-    console.error(`Failed to fetch sitemap: ${err instanceof Error ? err.message : err}`);
-    process.exit(1);
+  let sourceUrl: string;
+
+  if (options.urlsFile) {
+    let raw: string;
+    try {
+      raw = await fs.readFile(options.urlsFile, "utf-8");
+    } catch (err) {
+      console.error(`Failed to read URL file: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      console.error(`${options.urlsFile} is not valid JSON.`);
+      process.exit(1);
+    }
+    if (!Array.isArray(parsed) || !parsed.every((u) => typeof u === "string")) {
+      console.error(`${options.urlsFile} must contain a JSON array of strings.`);
+      process.exit(1);
+    }
+    const base = options.baseUrl?.replace(/\/$/, "") ?? "";
+    urls = [...new Set(
+      (parsed as string[]).map((u) => u.startsWith("http") ? u : `${base}${u}`)
+    )];
+    sourceUrl = `direct URLs from ${options.urlsFile} (${urls.length} provided)`;
+    if (options.filter) console.warn("Warning: --filter is ignored when --urls is provided.");
+    console.log(`Loaded ${urls.length} URL${urls.length === 1 ? "" : "s"} from ${options.urlsFile}`);
+  } else {
+    sourceUrl = options.sitemapUrl!;
+    console.log(`Fetching sitemap: ${sourceUrl}`);
+    try {
+      urls = await fetchSitemapUrls(sourceUrl, options.filter, {
+        jwtToken: options.jwtToken,
+        jwtCookieName: options.jwtCookieName,
+      });
+    } catch (err) {
+      console.error(`Failed to fetch sitemap: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+    if (urls.length === 0) {
+      console.error("No URLs found in sitemap (filter may be too restrictive).");
+      process.exit(1);
+    }
+    console.log(
+      `Found ${urls.length} URL${urls.length === 1 ? "" : "s"}${options.filter ? ` (filtered by /${options.filter}/)` : ""}`
+    );
   }
 
-  if (urls.length === 0) {
-    console.error("No URLs found in sitemap (filter may be too restrictive).");
-    process.exit(1);
-  }
-
-  console.log(
-    `Found ${urls.length} URL${urls.length === 1 ? "" : "s"}${options.filter ? ` (filtered by /${options.filter}/)` : ""}`
-  );
   console.log(`Starting audit with concurrency=${options.concurrency}...\n`);
 
   const browser = await chromium.launch({ headless: true });
@@ -149,7 +208,7 @@ async function main(): Promise<void> {
   await Promise.all(tasks);
   await browser.close();
 
-  const report = buildReport(results, options);
+  const report = buildReport(results, options, sourceUrl);
 
   await writeReport(report, options);
 

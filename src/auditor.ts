@@ -25,6 +25,19 @@ import type { CliOptions, PageResult, ViolationRecord } from "./types.js";
 
 export { chromium };
 
+function jwtCookiesForUrl(url: string, token: string, cookieName: string) {
+  const { hostname } = new URL(url);
+  return [{
+    name: cookieName,
+    value: token,
+    domain: hostname,
+    path: "/",
+    httpOnly: false,
+    secure: url.startsWith("https://"),
+    sameSite: "Lax" as const,
+  }];
+}
+
 export async function auditPage(
   browser: Browser,
   url: string,
@@ -35,6 +48,9 @@ export async function auditPage(
   const context = await browser.newContext();
   await context.route("**youtube.com/**", route => route.abort());
   await context.route("**ytimg.com/**", route => route.abort());
+  if (options.jwtToken) {
+    await context.addCookies(jwtCookiesForUrl(url, options.jwtToken, options.jwtCookieName));
+  }
   const page = await context.newPage();
 
   try {
