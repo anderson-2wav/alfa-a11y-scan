@@ -6,8 +6,7 @@
   "type": "module",
   "scripts": {
     "start": ". .env; node --env-file=.env --max-old-space-size=8192 --import tsx src/cli.ts $SITEMAP -o $OUTPUT -f html -v --wait 3000 --timeout 30000",
-    "typecheck": "tsc --noEmit",
-    "publish:github": "git checkout public && git checkout main -- src/ package.json package-lock.json tsconfig.json README.md .gitignore && git add -A && git diff --cached --quiet || git commit -m 'Sync from main' && git push github public:main && git checkout main"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@siteimprove/alfa-playwright": "^0.81.0",
