@@ -148,7 +148,9 @@ async function main(): Promise<void> {
     }
     const base = options.baseUrl?.replace(/\/$/, "") ?? "";
     urls = [...new Set(
-      (parsed as string[]).map((u) => u.startsWith("http") ? u : `${base}${u}`)
+      (parsed as string[])
+        .filter((u) => !u.startsWith("//") && !u.startsWith("#"))
+        .map((u) => u.startsWith("http") ? u : `${base}${u}`)
     )];
     sourceUrl = `direct URLs from ${options.urlsFile} (${urls.length} provided)`;
     if (options.filter) console.warn("Warning: --filter is ignored when --urls is provided.");
