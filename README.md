@@ -2,10 +2,16 @@
 
 A command-line tool that crawls every page in an XML sitemap, audits each for accessibility violations using [Siteimprove Alfa](https://github.com/Siteimprove/alfa), and produces a structured report. Pages are rendered in a headless Chromium browser so client-side JavaScript executes before analysis — meaning results reflect the actual DOM seen by assistive technologies, not just the raw HTML source.
 
+## Caveats
+This is very new software. 
+
+We developed it to solve an urgent need for an institutional client concerned about the ADA Title II Web Accessibility Rule deadline April 26, 2026. We've scanned about 3000 pages over 6 sites. We release it after relatively little testing because there may be other organizations out there who would benefit from this tool immediately, even with a few rough edges.
+
+Please use with care and a little patience. Read all the disclaimers and limitations of liability in the LICENSE. [LICENSE](./LICENSE)
+
 ## Requirements
 
 - Node.js 22 or later
-- npm
 
 ## Installation
 
@@ -18,11 +24,7 @@ npx playwright install chromium
 
 ## Configuration
 
-Copy `.env` and edit as needed:
-
-```bash
-cp .env .env.local
-```
+See examples in `.env` and edit as needed.
 
 | Variable | Description |
 |---|---|
@@ -32,12 +34,18 @@ cp .env .env.local
 | `CONCURRENCY` | Number of pages to audit in parallel, default `3` (overridden by `--concurrency` flag) |
 | `IGNORE_RULES` | Comma-separated Alfa rule IDs to suppress (e.g. `sia-r65,sia-r87`) |
 | `WARNINGS` | Set to `true` to include "cantTell" outcomes in reports (omit or set `false` to show confirmed violations only) |
+| `URLS` | Path to a JSON file containing an array of URLs to audit directly — use instead of `SITEMAP` for sites without a sitemap |
+| `BASE_URL` | Base URL (including scheme) prepended to relative paths in the URL file, e.g. `https://example.com` or `http://localhost:3000` |
+| `JWT_TOKEN` | JWT token value to inject as a cookie on every page request (for authenticated sites) |
+| `JWT_COOKIE_NAME` | Name of the cookie to set the JWT token in, default `token` |
 
 ## Usage
 
 ```bash
 node --env-file=.env --import tsx src/cli.ts <sitemap-url> [options]
 ```
+
+A sitemap URL is the most common way to provide pages to scan. For sites without a sitemap, use `--urls` instead (see below). Exactly one of the two must be provided.
 
 Or use the `npm start` shortcut, which reads `SITEMAP` and `OUTPUT` from `.env`:
 
@@ -49,7 +57,11 @@ npm start
 
 | Flag | Alias | Default | Description |
 |---|---|---|---|
-| `<sitemap-url>` | | *(required)* | URL of the XML sitemap to scan |
+| `<sitemap-url>` | | | URL of the XML sitemap to scan |
+| `--urls` | | `$URLS` | Path to a JSON file containing an array of URLs to audit directly (bypasses sitemap) |
+| `--base-url` | | `$BASE_URL` | Base URL prepended to relative paths in the URL file, e.g. `https://example.com` |
+| `--jwt-token` | | `$JWT_TOKEN` | JWT token to inject as a cookie on every page request |
+| `--jwt-cookie-name` | | `$JWT_COOKIE_NAME` | Cookie name for the JWT token, default `token` |
 | `--output` | `-o` | `./report` | Output file path (without extension) |
 | `--format` | `-f` | `csv` | Output format: `csv`, `xlsx`, `json`, `html` |
 | `--concurrency` | `-c` | `3` | Pages to audit in parallel |
@@ -70,7 +82,34 @@ node --env-file=.env --import tsx src/cli.ts https://example.com/sitemap.xml --f
 
 # Higher concurrency on a fast server
 node --env-file=.env --import tsx src/cli.ts https://example.com/sitemap.xml -c 6 -f html -o full-report
+
+# Audit a fixed list of URLs from a JSON file (no sitemap needed)
+node --env-file=.env --import tsx src/cli.ts --urls ./urls.json -f html -o report
+
+# Audit relative paths with a base URL (useful for local/staging environments)
+node --env-file=.env --import tsx src/cli.ts --urls ./urls.json --base-url http://localhost:3000 -f html -o report
+
+# Audit an authenticated site using a JWT cookie
+node --env-file=.env --import tsx src/cli.ts https://app.example.com/sitemap.xml \
+  --jwt-token eyJhbGci... --jwt-cookie-name session -f html -o report
 ```
+
+### URL file format
+
+When using `--urls`, provide a JSON file containing an array of URL strings. Lines beginning with `//` or `#` are treated as comments and skipped:
+
+```json
+[
+  "# Main pages",
+  "/",
+  "/about",
+  "/contact",
+  "// skip this one for now",
+  "# /work-in-progress"
+]
+```
+
+Absolute URLs (`https://...`) are used as-is. Relative paths require `--base-url` to be set.
 
 ## Output Formats
 
