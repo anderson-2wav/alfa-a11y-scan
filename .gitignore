@@ -1,0 +1,8 @@
+node_modules
+.claude
+.idea
+# output files
+*.html
+*.csv
+*.xlsx
+.DS_Store

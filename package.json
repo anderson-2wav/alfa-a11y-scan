@@ -1,0 +1,26 @@
+{
+  "name": "siteimprove-sitemap-checker",
+  "version": "1.0.0",
+  "description": "CLI tool to audit web accessibility using Siteimprove Alfa against all pages in a sitemap or URL list.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "start": ". .env; node --env-file=.env --max-old-space-size=8192 --import tsx src/cli.ts $SITEMAP -o $OUTPUT -f html -v --wait 3000 --timeout 30000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@siteimprove/alfa-playwright": "^0.81.0",
+    "@siteimprove/alfa-test-utils": "^0.81.0",
+    "exceljs": "^4.4.0",
+    "fast-xml-parser": "^4.5.0",
+    "p-limit": "^6.1.0",
+    "playwright": "^1.50.0",
+    "yargs": "^17.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/yargs": "^17.0.35",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}
