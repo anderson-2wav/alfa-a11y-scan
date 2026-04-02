@@ -335,7 +335,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Accessibility Audit Report — ${escapeHtml(report.sourceUrl)}</title>
+  <title>Accessibility Scan Report — ${escapeHtml(report.sourceUrl)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; background: #f5f5f5; padding: 24px; }
@@ -381,14 +381,14 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   </style>
 </head>
 <body>
-  <h1>Accessibility Audit Report</h1>
+  <h1>Accessibility Scan Report</h1>
   <p class="meta">
     Generated: ${escapeHtml(report.generatedAt)} &nbsp;|&nbsp;
     Source: ${report.sourceUrl.startsWith("http") ? `<a href="${escapeHtml(report.sourceUrl)}" target="_blank">${escapeHtml(report.sourceUrl)}</a>` : escapeHtml(report.sourceUrl)} &nbsp;|&nbsp;
     WCAG Level: ${escapeHtml(formatWcagLevel(report.options.wcagLevel))}
   </p>
   <p class="about">
-    This report was generated using the <a href="https://github.com/Siteimprove/alfa" target="_blank">Siteimprove Alfa</a>
+    This report was generated using the open source <a href="https://github.com/Siteimprove/alfa" target="_blank">Siteimprove Alfa</a>
     accessibility code checker. Each page is evaluated in a fully-rendered headless browser so that
     client-side JavaScript is executed before analysis — producing results that reflect the actual DOM
     seen by assistive technologies, rather than the raw HTML source. Rules are evaluated against
@@ -412,7 +412,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 
   <footer>
     ${logoDataUri ? `<a href="https://2wav.com" target="_blank" aria-label="2wav inc."><img src="${logoDataUri}" alt="2wav inc." class="footer-logo"></a>` : ""}
-    <p>&copy; 2026, 2wav inc. All Rights Reserved.</p>
+    <p>This A11Y scanner software &copy; 2026, 2wav inc. All Rights Reserved. Free for use under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank">GNU Affero General Public License v3.0</a></p>
   </footer>
 </body>
 </html>`;
