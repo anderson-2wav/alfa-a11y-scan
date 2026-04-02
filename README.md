@@ -7,7 +7,7 @@ This is very new software.
 
 We developed it to solve an urgent need for an institutional client concerned about the ADA Title II Web Accessibility Rule deadline April 26, 2026. We release it after relatively little testing so that other organizations with a similar need may benefit from this tool immediately, even with a few rough edges.
 
-Please use with care and a little patience. Read all the disclaimers and limitations of liability in the LICENSE. [LICENSE](./LICENSE)
+Please use with care and a little patience. Read all the disclaimers and limitations of liability in the [AGPL-3.0 LICENSE](./LICENSE).
 
 ## Requirements
 
