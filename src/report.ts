@@ -233,6 +233,24 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
     }
   }
 
+  const consolePages = report.pages.filter((p) => p.consoleMessages.length > 0);
+  if (consolePages.length > 0) {
+    const consoleSheet = workbook.addWorksheet("Console");
+    consoleSheet.columns = [
+      { header: "URL", key: "url", width: 60 },
+      { header: "Type", key: "type", width: 10 },
+      { header: "Message", key: "message", width: 90 },
+    ];
+    for (const p of consolePages) {
+      for (const msg of p.consoleMessages) {
+        consoleSheet.addRow({ url: p.url, type: msg.type, message: msg.text });
+      }
+    }
+    const consoleHeader = consoleSheet.getRow(1);
+    consoleHeader.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    consoleHeader.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF003057" } };
+  }
+
   await workbook.xlsx.writeFile(`${outputPath}.xlsx`);
 }
 
@@ -318,6 +336,20 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
           ? `<span class="tag tag--failed">${failCount} failed</span>`
           : `<span class="tag tag--cant-tell">${cantTellCount} cantTell</span>`;
 
+      const consoleSection = page.consoleMessages.length > 0
+        ? `<details class="console-log">
+            <summary>Console (${page.consoleMessages.length})</summary>
+            <div class="details-content">
+              <table>
+                <thead><tr><th>Type</th><th>Message</th></tr></thead>
+                <tbody>${page.consoleMessages.map((m) =>
+                  `<tr class="console-${m.type}"><td>${escapeHtml(m.type)}</td><td>${escapeHtml(m.text)}</td></tr>`
+                ).join("")}</tbody>
+              </table>
+            </div>
+          </details>`
+        : "";
+
       return `<details>
         <summary>${pageLink(page.url, report.options.baseUrl)} ${label}${cantTellCount > 0 && failCount > 0 ? ` <span class="tag tag--cant-tell">${cantTellCount} cantTell</span>` : ""}</summary>
         <div class="details-content">
@@ -326,6 +358,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
             <tbody>${violationRows}</tbody>
           </table>
         </div>
+        ${consoleSection}
       </details>`;
     })
     .join("\n");
@@ -376,6 +409,9 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     a { color: #0066cc; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .error-msg { padding: 14px 18px; color: #c0392b; font-size: 0.9em; }
+    .console-log td { background: #f8f9fa; }
+    .console-warn td { background: #fffbea; }
+    .console-error td { background: #fff0f0; }
     .no-issues { padding: 14px 18px; color: #1e8449; font-size: 0.9em; }
     .summary--error { color: #c0392b !important; }
   </style>

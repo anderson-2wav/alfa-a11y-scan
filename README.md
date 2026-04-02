@@ -38,6 +38,7 @@ See examples in `.env` and edit as needed.
 | `BASE_URL` | Base URL (including scheme) prepended to relative paths in the URL file, e.g. `https://example.com` or `http://localhost:3000` |
 | `JWT_TOKEN` | JWT token value to inject as a cookie on every page request (for authenticated sites) |
 | `JWT_COOKIE_NAME` | Name of the cookie to set the JWT token in, default `token` |
+| `CAPTURE_CONSOLE` | Set to `true` to capture browser `console.log/warn/error` output per page |
 
 ## Usage
 
@@ -70,6 +71,7 @@ npm start
 | `--wait` | | `2000` | Extra wait after page load in ms (allows JS to settle) |
 | `--wcag-level` | | `aa` | WCAG conformance level: `a`, `aa`, `aaa` (default is WCAG 2.1 AA) |
 | `--verbose` | `-v` | `false` | Print per-page progress to the console |
+| `--capture-console` | | `$CAPTURE_CONSOLE` | Capture browser `console.log/warn/error` output per page; included in HTML, XLSX, and JSON reports |
 
 ### Examples
 
@@ -117,7 +119,7 @@ Absolute URLs (`https://...`) are used as-is. Relative paths require `--base-url
 |---|---|
 | `html` | Self-contained single-file report with a summary dashboard, collapsible per-page results, and the HTML snippet of each failing element |
 | `csv` | One row per violation; suitable for import into Excel or Google Sheets |
-| `xlsx` | Excel workbook with a Summary sheet and a color-coded Violations sheet |
+| `xlsx` | Excel workbook with a Summary sheet, color-coded Violations sheet, and optional Console sheet (when `--capture-console` is on) |
 | `json` | Full structured data including all metadata; useful for downstream processing |
 
 ## Ignored Rules

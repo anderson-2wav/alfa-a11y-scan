@@ -18,7 +18,7 @@
 import { chromium, type Browser } from "playwright";
 import { Playwright } from "@siteimprove/alfa-playwright";
 import { Audit, Rules } from "@siteimprove/alfa-test-utils";
-import type { CliOptions, PageResult, ViolationRecord } from "./types.js";
+import type { CliOptions, ConsoleMessage, PageResult, ViolationRecord } from "./types.js";
 
 export { chromium };
 
@@ -49,6 +49,18 @@ export async function auditPage(
     await context.addCookies(jwtCookiesForUrl(url, options.jwtToken, options.jwtCookieName));
   }
   const page = await context.newPage();
+  const consoleMessages: ConsoleMessage[] = [];
+  if (options.captureConsole) {
+    page.on("console", (msg) => {
+      const type = msg.type();
+      if (type === "log" || type === "warning" || type === "error") {
+        consoleMessages.push({
+          type: type === "warning" ? "warn" : type as "log" | "error",
+          text: msg.text(),
+        });
+      }
+    });
+  }
 
   try {
     await page.goto(url, {
@@ -100,6 +112,7 @@ export async function auditPage(
       url,
       status: "ok",
       violations,
+      consoleMessages,
       passedRules: counts.passed,
       failedRules: counts.failed,
       cantTellRules: counts.cantTell,
@@ -115,6 +128,7 @@ export async function auditPage(
       status: "error",
       errorMessage: err instanceof Error ? err.message : String(err),
       violations: [],
+      consoleMessages: [],
       passedRules: 0,
       failedRules: 0,
       cantTellRules: 0,

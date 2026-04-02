@@ -92,6 +92,11 @@ const argv = await yargs(hideBin(process.argv))
     default: "token",
     describe: "Cookie name for the JWT token (default: token)",
   })
+  .option("capture-console", {
+    type: "boolean",
+    default: false,
+    describe: "Capture browser console output (log, warn, error) per page",
+  })
   .check((argv) => {
     const hasSitemap = argv._.length > 0;
     const hasUrls = !!(argv.urls || process.env.URLS);
@@ -121,6 +126,7 @@ const options: CliOptions = {
   showWarnings: process.env.WARNINGS === "true",
   jwtToken: argv["jwt-token"] ?? process.env.JWT_TOKEN,
   jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
+  captureConsole: argv["capture-console"] || process.env.CAPTURE_CONSOLE === "true",
 };
 
 async function main(): Promise<void> {
@@ -191,6 +197,12 @@ async function main(): Promise<void> {
       const result = await auditPage(browser, url, options);
       results[index] = result;
       completed++;
+
+      if (options.verbose && options.captureConsole && result.consoleMessages.length > 0) {
+        for (const msg of result.consoleMessages) {
+          process.stdout.write(`  [console.${msg.type}] ${msg.text}\n`);
+        }
+      }
 
       if (options.pause > 0) {
         await new Promise((resolve) => setTimeout(resolve, options.pause));
