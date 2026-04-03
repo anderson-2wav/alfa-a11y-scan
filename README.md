@@ -40,6 +40,7 @@ See examples in `.env` and edit as needed.
 | `JWT_COOKIE_NAME` | Name of the cookie to set the JWT token in, default `token` |
 | `CAPTURE_CONSOLE` | Set to `true` to capture browser `console.log/warn/error` output per page |
 | `RETRY` | Number of times to retry a page if it errors or has violations, default `1` |
+| `STOP_ON_FAIL` | Set to `true` to stop scanning after the first page error or violation and write a partial report |
 
 ## Usage
 
@@ -74,6 +75,7 @@ npm start
 | `--verbose` | `-v` | `false` | Print per-page progress to the console |
 | `--capture-console` | | `$CAPTURE_CONSOLE` | Capture browser `console.log/warn/error` output per page; included in HTML, XLSX, and JSON reports |
 | `--retry` | | `1` | Times to retry a page if it errors or has violations (set to `0` to disable) |
+| `--stop-on-fail` | | `$STOP_ON_FAIL` | Stop after the first page error or violation and write a partial report |
 
 ### Examples
 
