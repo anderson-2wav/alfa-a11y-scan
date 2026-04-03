@@ -54,10 +54,11 @@ export async function auditPage(
     page.on("console", (msg) => {
       const type = msg.type();
       if (type === "log" || type === "warning" || type === "error") {
-        consoleMessages.push({
-          type: type === "warning" ? "warn" : type as "log" | "error",
-          text: msg.text(),
-        });
+        const normalizedType = type === "warning" ? "warn" : type as "log" | "error";
+        if (options.verbose) {
+          process.stdout.write(`  [console.${normalizedType}] ${msg.text()}\n`);
+        }
+        consoleMessages.push({ type: normalizedType, text: msg.text() });
       }
     });
   }
@@ -65,8 +66,9 @@ export async function auditPage(
   try {
     await page.goto(url, {
       timeout: options.timeout,
-      waitUntil: "networkidle",
+      // waitUntil: "networkidle",
       // waitUntil: "load",
+      waitUntil: "domcontentloaded",
     });
 
     if (options.wait > 0) {

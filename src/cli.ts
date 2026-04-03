@@ -204,12 +204,6 @@ async function main(): Promise<void> {
       results[index] = result;
       completed++;
 
-      if (options.verbose && options.captureConsole && result.consoleMessages.length > 0) {
-        for (const msg of result.consoleMessages) {
-          process.stdout.write(`  [console.${msg.type}] ${msg.text}\n`);
-        }
-      }
-
       if (options.pause > 0) {
         await new Promise((resolve) => setTimeout(resolve, options.pause));
       }
