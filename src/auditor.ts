@@ -127,8 +127,9 @@ export async function auditPage(
     };
   } catch (err) {
     await context.close();
+    const errMsg = err instanceof Error ? err.message : String(err);
     if (attempt <= options.retry) {
-      console.log(`RETRY: ${url} because of page error.`);
+      console.log(`RETRY: ${url} because of page error:`, errMsg);
       return auditPage(browser, url, options, attempt + 1);
     }
     return {
