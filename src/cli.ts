@@ -102,6 +102,11 @@ const argv = await yargs(hideBin(process.argv))
     default: 1,
     describe: "Number of times to retry a page if it errors or has violations (default: 1)",
   })
+  .option("stop-on-fail", {
+    type: "boolean",
+    default: false,
+    describe: "Stop scanning after the first page error or violation and write a partial report",
+  })
   .check((argv) => {
     const hasSitemap = argv._.length > 0;
     const hasUrls = !!(argv.urls || process.env.URLS);
@@ -133,6 +138,7 @@ const options: CliOptions = {
   jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
   captureConsole: argv["capture-console"] || process.env.CAPTURE_CONSOLE === "true",
   retry: argv.retry ?? Number(process.env.RETRY ?? 1),
+  stopOnFail: argv["stop-on-fail"] || process.env.STOP_ON_FAIL === "true",
 };
 
 async function main(): Promise<void> {
@@ -194,15 +200,23 @@ async function main(): Promise<void> {
   const limit = pLimit(options.concurrency);
   const results: PageResult[] = new Array(urls.length);
   let completed = 0;
+  let stopFlag = false;
 
   const tasks = urls.map((url, index) =>
     limit(async () => {
+      if (stopFlag) return;
+
       if (options.verbose) {
         process.stdout.write(`[${index + 1}/${urls.length}] Checking: ${url}\n`);
       }
       const result = await auditPage(browser, url, options);
       results[index] = result;
       completed++;
+
+      if (options.stopOnFail && (result.status === "error" || result.violations.length > 0)) {
+        stopFlag = true;
+        console.log(`\nStopping scan: ${result.status === "error" ? "page error" : "violations found"} on ${url}`);
+      }
 
       if (options.pause > 0) {
         await new Promise((resolve) => setTimeout(resolve, options.pause));
@@ -219,7 +233,12 @@ async function main(): Promise<void> {
   await Promise.all(tasks);
   await browser.close();
 
-  const report = buildReport(results, options, sourceUrl);
+  const completedResults = results.filter((r): r is PageResult => r !== undefined);
+  if (stopFlag) {
+    console.log(`  Partial scan: ${completedResults.length} of ${urls.length} pages checked.\n`);
+  }
+
+  const report = buildReport(completedResults, options, sourceUrl);
 
   await writeReport(report, options);
 

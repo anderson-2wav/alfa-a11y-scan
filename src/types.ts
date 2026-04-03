@@ -34,6 +34,7 @@ export interface CliOptions {
   jwtCookieName: string;
   captureConsole: boolean;
   retry: number;
+  stopOnFail: boolean;
 }
 
 export interface ConsoleMessage {
