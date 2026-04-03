@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "start": ". .env; node --env-file=.env --max-old-space-size=8192 --import tsx src/cli.ts $SITEMAP -o $OUTPUT -f html -v --wait 3000 --timeout 30000",
+    "start": ". .env; node --env-file=.env --max-old-space-size=16382 --import tsx src/cli.ts $SITEMAP -o $OUTPUT -f html -v --wait 4000 --timeout 30000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
