@@ -39,6 +39,7 @@ See examples in `.env` and edit as needed.
 | `JWT_TOKEN` | JWT token value to inject as a cookie on every page request (for authenticated sites) |
 | `JWT_COOKIE_NAME` | Name of the cookie to set the JWT token in, default `token` |
 | `CAPTURE_CONSOLE` | Set to `true` to capture browser `console.log/warn/error` output per page |
+| `RETRY` | Number of times to retry a page if it errors or has violations, default `1` |
 
 ## Usage
 
@@ -72,6 +73,7 @@ npm start
 | `--wcag-level` | | `aa` | WCAG conformance level: `a`, `aa`, `aaa` (default is WCAG 2.1 AA) |
 | `--verbose` | `-v` | `false` | Print per-page progress to the console |
 | `--capture-console` | | `$CAPTURE_CONSOLE` | Capture browser `console.log/warn/error` output per page; included in HTML, XLSX, and JSON reports |
+| `--retry` | | `1` | Times to retry a page if it errors or has violations (set to `0` to disable) |
 
 ### Examples
 

@@ -108,6 +108,13 @@ export async function auditPage(
 
     const counts = countByOutcome(audit);
 
+    // If violations found and retries remain, give the page another chance
+    if (violations.length > 0 && attempt <= options.retry) {
+      await context.close();
+      console.log(`RETRY: ${url} becase of ${violations.length} violations`);
+      return auditPage(browser, url, options, attempt + 1);
+    }
+
     return {
       url,
       status: "ok",
@@ -120,7 +127,8 @@ export async function auditPage(
     };
   } catch (err) {
     await context.close();
-    if (attempt < 2) {
+    if (attempt <= options.retry) {
+      console.log(`RETRY: ${url} because of page error.`);
       return auditPage(browser, url, options, attempt + 1);
     }
     return {
