@@ -97,6 +97,11 @@ const argv = await yargs(hideBin(process.argv))
     default: false,
     describe: "Capture browser console output (log, warn, error) per page",
   })
+  .option("retry", {
+    type: "number",
+    default: 1,
+    describe: "Number of times to retry a page if it errors or has violations (default: 1)",
+  })
   .check((argv) => {
     const hasSitemap = argv._.length > 0;
     const hasUrls = !!(argv.urls || process.env.URLS);
@@ -127,6 +132,7 @@ const options: CliOptions = {
   jwtToken: argv["jwt-token"] ?? process.env.JWT_TOKEN,
   jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
   captureConsole: argv["capture-console"] || process.env.CAPTURE_CONSOLE === "true",
+  retry: argv.retry ?? Number(process.env.RETRY ?? 1),
 };
 
 async function main(): Promise<void> {
