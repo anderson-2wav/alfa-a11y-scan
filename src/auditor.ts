@@ -111,7 +111,7 @@ export async function auditPage(
     // If violations found and retries remain, give the page another chance
     if (violations.length > 0 && attempt <= options.retry) {
       await context.close();
-      console.log(`RETRY: ${url} becase of ${violations.length} violations`);
+      console.log(`RETRY: ${url} becase of ${violations.length} violations`, consoleMessages);
       return auditPage(browser, url, options, attempt + 1);
     }
 
