@@ -16,6 +16,8 @@
 // For commercial licensing, contact 2wav — https://2wav.com
 
 import { promises as fs } from "fs";
+import { resolve as resolvePath } from "path";
+import readline from "readline";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { chromium } from "playwright";
@@ -107,6 +109,10 @@ const argv = await yargs(hideBin(process.argv))
     default: false,
     describe: "Stop scanning after the first page error or violation and write a partial report",
   })
+  .option("console-log-file", {
+    type: "string",
+    describe: "File path to write browser console output (relative paths resolve to cwd)",
+  })
   .check((argv) => {
     const hasSitemap = argv._.length > 0;
     const hasUrls = !!(argv.urls || process.env.URLS);
@@ -136,10 +142,22 @@ const options: CliOptions = {
   showWarnings: process.env.WARNINGS === "true",
   jwtToken: argv["jwt-token"] ?? process.env.JWT_TOKEN,
   jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
-  captureConsole: argv["capture-console"] || process.env.CAPTURE_CONSOLE === "true",
+  consoleLogFile: (() => {
+    const raw = argv["console-log-file"] ?? process.env.CONSOLE_LOG_FILE;
+    return raw ? resolvePath(raw) : undefined;
+  })(),
+  captureConsole: !!(argv["capture-console"] || process.env.CAPTURE_CONSOLE === "true" || argv["console-log-file"] || process.env.CONSOLE_LOG_FILE),
   retry: argv.retry ?? Number(process.env.RETRY ?? 1),
   stopOnFail: argv["stop-on-fail"] || process.env.STOP_ON_FAIL === "true",
 };
+
+function askQuestion(prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(prompt, (answer) => { rl.close(); resolve(answer); });
+    rl.on("close", () => resolve(""));
+  });
+}
 
 async function main(): Promise<void> {
   let urls: string[];
@@ -196,11 +214,28 @@ async function main(): Promise<void> {
 
   console.log(`Starting audit with concurrency=${options.concurrency}...\n`);
 
+  if (options.consoleLogFile) {
+    await fs.writeFile(options.consoleLogFile, `Scan started: ${new Date().toISOString()}\nSource: ${sourceUrl}\n\n`);
+    console.log(`Browser console log: ${options.consoleLogFile}\n`);
+  }
+
   const browser = await chromium.launch({ headless: true });
   const limit = pLimit(options.concurrency);
   const results: PageResult[] = new Array(urls.length);
   let completed = 0;
   let stopFlag = false;
+  let interrupted = false;
+
+  const handleSigint = () => {
+    if (interrupted) {
+      process.stdout.write("\nForce exit.\n");
+      process.exit(1);
+    }
+    interrupted = true;
+    stopFlag = true;
+    process.stdout.write("\n\n^C received — finishing in-flight pages (^C again to force exit)...\n");
+  };
+  process.on("SIGINT", handleSigint);
 
   const tasks = urls.map((url, index) =>
     limit(async () => {
@@ -212,6 +247,14 @@ async function main(): Promise<void> {
       const result = await auditPage(browser, url, options);
       results[index] = result;
       completed++;
+
+      if (options.consoleLogFile) {
+        const header = `=== ${result.url} ===\n`;
+        const messages = result.consoleMessages.length > 0
+          ? result.consoleMessages.map((m) => `[${m.type}] ${m.text}`).join("\n") + "\n"
+          : "";
+        await fs.appendFile(options.consoleLogFile, header + messages + "\n");
+      }
 
       if (options.stopOnFail && (result.status === "error" || result.violations.length > 0)) {
         stopFlag = true;
@@ -232,8 +275,23 @@ async function main(): Promise<void> {
 
   await Promise.all(tasks);
   await browser.close();
+  process.removeListener("SIGINT", handleSigint);
 
   const completedResults = results.filter((r): r is PageResult => r !== undefined);
+
+  if (interrupted) {
+    console.log(`\nScan interrupted. ${completedResults.length} of ${urls.length} pages completed.`);
+    if (completedResults.length > 0) {
+      const answer = await askQuestion("Write partial report? [y/N] ");
+      if (answer.trim().toLowerCase().startsWith("y")) {
+        const report = buildReport(completedResults, options, sourceUrl);
+        await writeReport(report, options);
+        console.log(`Partial report written to: ${options.output}.${options.format}`);
+      }
+    }
+    process.exit(0);
+  }
+
   if (stopFlag) {
     console.log(`  Partial scan: ${completedResults.length} of ${urls.length} pages checked.\n`);
   }
