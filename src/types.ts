@@ -33,6 +33,7 @@ export interface CliOptions {
   jwtToken?: string;
   jwtCookieName: string;
   captureConsole: boolean;
+  consoleLogFile?: string;
   retry: number;
   stopOnFail: boolean;
 }
