@@ -72,6 +72,7 @@ export interface PageResult {
 export interface AuditReport {
   generatedAt: string;
   sourceUrl: string;
+  durationMs: number;
   options: CliOptions;
   summary: {
     totalPages: number;

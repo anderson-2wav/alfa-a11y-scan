@@ -24,7 +24,7 @@ import { chromium } from "playwright";
 import pLimit from "p-limit";
 import { fetchSitemapUrls } from "./sitemap.js";
 import { auditPage } from "./auditor.js";
-import { buildReport, writeReport } from "./report.js";
+import { buildReport, writeReport, formatDuration } from "./report.js";
 import type { CliOptions, PageResult } from "./types.js";
 
 const argv = await yargs(hideBin(process.argv))
@@ -219,6 +219,7 @@ async function main(): Promise<void> {
     console.log(`Browser console log: ${options.consoleLogFile}\n`);
   }
 
+  const scanStart = Date.now();
   const browser = await chromium.launch({ headless: true });
   const limit = pLimit(options.concurrency);
   const results: PageResult[] = new Array(urls.length);
@@ -284,7 +285,7 @@ async function main(): Promise<void> {
     if (completedResults.length > 0) {
       const answer = await askQuestion("Write partial report? [y/N] ");
       if (answer.trim().toLowerCase().startsWith("y")) {
-        const report = buildReport(completedResults, options, sourceUrl);
+        const report = buildReport(completedResults, options, sourceUrl, Date.now() - scanStart);
         await writeReport(report, options);
         console.log(`Partial report written to: ${options.output}.${options.format}`);
       }
@@ -296,7 +297,7 @@ async function main(): Promise<void> {
     console.log(`  Partial scan: ${completedResults.length} of ${urls.length} pages checked.\n`);
   }
 
-  const report = buildReport(completedResults, options, sourceUrl);
+  const report = buildReport(completedResults, options, sourceUrl, Date.now() - scanStart);
 
   await writeReport(report, options);
 
@@ -304,6 +305,7 @@ async function main(): Promise<void> {
   const outputFile = `${options.output}.${ext}`;
 
   console.log(`\nScan complete!`);
+  console.log(`  Elapsed time:               ${formatDuration(report.durationMs)}`);
   console.log(`  Pages checked:              ${report.summary.totalPages}`);
   console.log(`  Pages with errors:          ${report.summary.pagesWithErrors}`);
   console.log(`  Total violations (failed):  ${report.summary.totalViolations}`);
