@@ -21,7 +21,14 @@ import { join, dirname } from "path";
 import ExcelJS from "exceljs";
 import type { AuditReport, CliOptions, PageResult, ViolationRecord } from "./types.js";
 
-export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl: string): AuditReport {
+export function formatDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl: string, durationMs = 0): AuditReport {
   const allViolations = pages.flatMap((p) => p.violations);
 
   const ruleCounts = new Map<string, { ruleTitle: string; count: number }>();
@@ -43,6 +50,7 @@ export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl:
   return {
     generatedAt: new Date().toISOString(),
     sourceUrl,
+    durationMs,
     options,
     summary: {
       totalPages: pages.length,
@@ -151,6 +159,7 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   const s = report.summary;
 
   summarySheet.addRow(["Generated", report.generatedAt]);
+  summarySheet.addRow(["Elapsed Time", formatDuration(report.durationMs)]);
   summarySheet.addRow(["Source", report.sourceUrl]);
   summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options.wcagLevel)]);
   summarySheet.addRow([]);
@@ -420,6 +429,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   <h1>Accessibility Scan Report</h1>
   <p class="meta">
     Generated: ${escapeHtml(report.generatedAt)} &nbsp;|&nbsp;
+    Elapsed: ${escapeHtml(formatDuration(report.durationMs))} &nbsp;|&nbsp;
     Source: ${report.sourceUrl.startsWith("http") ? `<a href="${escapeHtml(report.sourceUrl)}" target="_blank">${escapeHtml(report.sourceUrl)}</a>` : escapeHtml(report.sourceUrl)} &nbsp;|&nbsp;
     WCAG Level: ${escapeHtml(formatWcagLevel(report.options.wcagLevel))}
   </p>
