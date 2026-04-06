@@ -1,11 +1,18 @@
 # Alfa Sitemap Accessibility Checker
 
-A command-line tool that crawls every page in an XML sitemap, audits each for accessibility violations using [Siteimprove Alfa](https://github.com/Siteimprove/alfa), and produces a structured report. Pages are rendered in a headless Chromium browser so client-side JavaScript executes before analysis — meaning results reflect the actual DOM seen by assistive technologies, not just the raw HTML source.
+A command-line tool that uses [Siteimprove Alfa](https://github.com/Siteimprove/alfa) in a headless browser for A11Y evaluation of websites.
+
+Key design features:
+
+- **Full Page rendering.** Pages are loaded in a real browser engine with JavaScript enabled. Alfa evaluates the same Document Object Model (DOM) that a user with assistive technology would encounter — not the raw HTML from the server.
+- **Siteimprove Alfa evaluation engine.** The same open-source library underlying Siteimprove's browser extension and, likely, their commercial products. Results are directly comparable to Siteimprove's own tooling.
+- **Whole-site coverage.** The tool crawls every URL in a sitemap or provided list in a single run, producing a complete inventory of violations across the entire site.
+- **Configurable.** Concurrency, WCAG level (2.0 A, 2.1 AA, 2.1 AAA), per-page retries, URL filtering, and authenticated access via JWT cookies are all supported. Scan results can be filtered to suppress accepted exceptions.
 
 ## Caveats
 This is very new software. 
 
-We developed it to solve an urgent need for an institutional client concerned about the ADA Title II Web Accessibility Rule deadline April 26, 2026. We release it after relatively little testing so that other organizations with a similar need may benefit from this tool immediately, even with a few rough edges.
+We developed it to solve a specific need for an institutional client concerned about the ADA Title II Web Accessibility Rule deadline April 26, 2026. We release it after relatively little testing so that other organizations with a similar need may benefit from this tool immediately, even with a few rough edges.
 
 Please use with care and a little patience. Read all the disclaimers and limitations of liability in the [AGPL-3.0 LICENSE](./LICENSE).
 
