@@ -1,13 +1,20 @@
 # Alfa Sitemap Accessibility Checker
 
-A command-line tool that crawls every page in an XML sitemap, audits each for accessibility violations using [Siteimprove Alfa](https://github.com/Siteimprove/alfa), and produces a structured report. Pages are rendered in a headless Chromium browser so client-side JavaScript executes before analysis — meaning results reflect the actual DOM seen by assistive technologies, not just the raw HTML source.
+A command-line tool that uses [Siteimprove Alfa](https://github.com/Siteimprove/alfa) in a headless browser for A11Y evaluation of websites.
+
+Key design features:
+
+- **Full Page rendering.** Pages are loaded in a real browser engine with JavaScript enabled. Alfa evaluates the same Document Object Model (DOM) that a user with assistive technology would encounter — not the raw HTML from the server.
+- **Siteimprove Alfa evaluation engine.** The same open-source library underlying Siteimprove's browser extension and, likely, their commercial products. Results are directly comparable to Siteimprove's own tooling.
+- **Whole-site coverage.** The tool crawls every URL in a sitemap or provided list in a single run, producing a complete inventory of violations across the entire site.
+- **Configurable.** Concurrency, WCAG level (2.0 A, 2.1 AA, 2.1 AAA), per-page retries, URL filtering, and authenticated access via JWT cookies are all supported. Scan results can be filtered to suppress accepted exceptions.
 
 ## Caveats
 This is very new software. 
 
-We developed it to solve an urgent need for an institutional client concerned about the ADA Title II Web Accessibility Rule deadline April 26, 2026. We release it after relatively little testing so that other organizations with a similar need may benefit from this tool immediately, even with a few rough edges.
+We developed it to solve a specific need for an institutional client concerned about the ADA Title II Web Accessibility Rule deadline April 26, 2026. We release it after relatively little testing so that other organizations with a similar need may benefit from this tool immediately, even with a few rough edges.
 
-Please use with care and a little patience. Read all the disclaimers and limitations of liability in the LICENSE. [LICENSE](./LICENSE)
+Please use with care and a little patience. Read all the disclaimers and limitations of liability in the [AGPL-3.0 LICENSE](./LICENSE).
 
 ## Requirements
 
@@ -38,6 +45,10 @@ See examples in `.env` and edit as needed.
 | `BASE_URL` | Base URL (including scheme) prepended to relative paths in the URL file, e.g. `https://example.com` or `http://localhost:3000` |
 | `JWT_TOKEN` | JWT token value to inject as a cookie on every page request (for authenticated sites) |
 | `JWT_COOKIE_NAME` | Name of the cookie to set the JWT token in, default `token` |
+| `CAPTURE_CONSOLE` | Set to `true` to capture browser `console.log/warn/error` output per page |
+| `CONSOLE_LOG_FILE` | File path to write browser console output; relative paths resolve to cwd. Also enables `CAPTURE_CONSOLE`. |
+| `RETRY` | Number of times to retry a page if it errors or has violations, default `1` |
+| `STOP_ON_FAIL` | Set to `true` to stop scanning after the first page error or violation and write a partial report |
 
 ## Usage
 
@@ -70,6 +81,10 @@ npm start
 | `--wait` | | `2000` | Extra wait after page load in ms (allows JS to settle) |
 | `--wcag-level` | | `aa` | WCAG conformance level: `a`, `aa`, `aaa` (default is WCAG 2.1 AA) |
 | `--verbose` | `-v` | `false` | Print per-page progress to the console |
+| `--capture-console` | | `$CAPTURE_CONSOLE` | Capture browser `console.log/warn/error` output per page; included in HTML, XLSX, and JSON reports |
+| `--console-log-file` | | `$CONSOLE_LOG_FILE` | File path to write browser console output (relative paths resolve to cwd); also enables `--capture-console` |
+| `--retry` | | `1` | Times to retry a page if it errors or has violations (set to `0` to disable) |
+| `--stop-on-fail` | | `$STOP_ON_FAIL` | Stop after the first page error or violation and write a partial report |
 
 ### Examples
 
@@ -117,7 +132,7 @@ Absolute URLs (`https://...`) are used as-is. Relative paths require `--base-url
 |---|---|
 | `html` | Self-contained single-file report with a summary dashboard, collapsible per-page results, and the HTML snippet of each failing element |
 | `csv` | One row per violation; suitable for import into Excel or Google Sheets |
-| `xlsx` | Excel workbook with a Summary sheet and a color-coded Violations sheet |
+| `xlsx` | Excel workbook with a Summary sheet, color-coded Violations sheet, and optional Console sheet (when `--capture-console` is on) |
 | `json` | Full structured data including all metadata; useful for downstream processing |
 
 ## Ignored Rules
@@ -137,12 +152,25 @@ Both sitemap formats are supported:
 - **`<urlset>`** — standard page list
 - **`<sitemapindex>`** — index of nested sitemaps (fetched and merged recursively)
 
+## Interrupting a scan
+
+Press **Ctrl+C** during a scan to stop it gracefully. In-flight pages (up to the concurrency limit) will finish, then the tool will prompt:
+
+```
+^C received — finishing in-flight pages (^C again to force exit)...
+
+Scan interrupted. 42 of 187 pages completed.
+Write partial report? [y/N]
+```
+
+Enter `y` to write a partial report from pages completed so far, or `n` (or press Ctrl+C again) to exit immediately without writing anything.
+
 ## How It Works
 
 1. The sitemap is fetched and parsed to extract all page URLs (optionally filtered by regex).
 2. A single headless Chromium browser is launched and pages are audited in a concurrency-limited pool (default 3 at a time).
-3. Each page is loaded with `networkidle` (or falls back after timeout), then Siteimprove Alfa evaluates the rendered DOM against WCAG success criteria.
-4. Failed pages are retried once automatically before being recorded as errors.
+3. Each page is loaded with `domcontentloaded` then waits for the configured `--wait` period to allow JS to settle. Siteimprove Alfa then evaluates the rendered DOM against WCAG success criteria.
+4. Failed pages are retried automatically (default 1 retry) before being recorded as errors.
 5. Results are aggregated and written to the chosen output format.
 
 ## License

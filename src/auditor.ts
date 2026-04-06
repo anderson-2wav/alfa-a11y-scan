@@ -18,7 +18,7 @@
 import { chromium, type Browser } from "playwright";
 import { Playwright } from "@siteimprove/alfa-playwright";
 import { Audit, Rules } from "@siteimprove/alfa-test-utils";
-import type { CliOptions, PageResult, ViolationRecord } from "./types.js";
+import type { CliOptions, ConsoleMessage, PageResult, ViolationRecord } from "./types.js";
 
 export { chromium };
 
@@ -49,12 +49,26 @@ export async function auditPage(
     await context.addCookies(jwtCookiesForUrl(url, options.jwtToken, options.jwtCookieName));
   }
   const page = await context.newPage();
+  const consoleMessages: ConsoleMessage[] = [];
+  if (options.captureConsole) {
+    page.on("console", (msg) => {
+      const type = msg.type();
+      if (type === "log" || type === "warning" || type === "error") {
+        const normalizedType = type === "warning" ? "warn" : type as "log" | "error";
+        if (options.verbose) {
+          process.stdout.write(`  [console.${normalizedType}] ${msg.text()}\n`);
+        }
+        consoleMessages.push({ type: normalizedType, text: msg.text() });
+      }
+    });
+  }
 
   try {
     await page.goto(url, {
       timeout: options.timeout,
-      waitUntil: "networkidle",
+      // waitUntil: "networkidle",
       // waitUntil: "load",
+      waitUntil: "domcontentloaded",
     });
 
     if (options.wait > 0) {
@@ -96,10 +110,18 @@ export async function auditPage(
 
     const counts = countByOutcome(audit);
 
+    // If violations found and retries remain, give the page another chance
+    if (violations.length > 0 && attempt <= options.retry) {
+      await context.close();
+      console.log(`RETRY: ${url} becase of ${violations.length} violations`, consoleMessages);
+      return auditPage(browser, url, options, attempt + 1);
+    }
+
     return {
       url,
       status: "ok",
       violations,
+      consoleMessages,
       passedRules: counts.passed,
       failedRules: counts.failed,
       cantTellRules: counts.cantTell,
@@ -107,7 +129,9 @@ export async function auditPage(
     };
   } catch (err) {
     await context.close();
-    if (attempt < 2) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (attempt <= options.retry) {
+      console.log(`RETRY: ${url} because of page error:`, errMsg);
       return auditPage(browser, url, options, attempt + 1);
     }
     return {
@@ -115,6 +139,7 @@ export async function auditPage(
       status: "error",
       errorMessage: err instanceof Error ? err.message : String(err),
       violations: [],
+      consoleMessages: [],
       passedRules: 0,
       failedRules: 0,
       cantTellRules: 0,

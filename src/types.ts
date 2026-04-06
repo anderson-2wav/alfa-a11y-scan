@@ -32,6 +32,15 @@ export interface CliOptions {
   showWarnings: boolean;
   jwtToken?: string;
   jwtCookieName: string;
+  captureConsole: boolean;
+  consoleLogFile?: string;
+  retry: number;
+  stopOnFail: boolean;
+}
+
+export interface ConsoleMessage {
+  type: "log" | "warn" | "error";
+  text: string;
 }
 
 export interface ViolationRecord {
@@ -53,6 +62,7 @@ export interface PageResult {
   status: "ok" | "error";
   errorMessage?: string;
   violations: ViolationRecord[];
+  consoleMessages: ConsoleMessage[];
   passedRules: number;
   failedRules: number;
   cantTellRules: number;
@@ -62,6 +72,7 @@ export interface PageResult {
 export interface AuditReport {
   generatedAt: string;
   sourceUrl: string;
+  durationMs: number;
   options: CliOptions;
   summary: {
     totalPages: number;

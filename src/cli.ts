@@ -16,13 +16,15 @@
 // For commercial licensing, contact 2wav — https://2wav.com
 
 import { promises as fs } from "fs";
+import { resolve as resolvePath } from "path";
+import readline from "readline";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { chromium } from "playwright";
 import pLimit from "p-limit";
 import { fetchSitemapUrls } from "./sitemap.js";
 import { auditPage } from "./auditor.js";
-import { buildReport, writeReport } from "./report.js";
+import { buildReport, writeReport, formatDuration } from "./report.js";
 import type { CliOptions, PageResult } from "./types.js";
 
 const argv = await yargs(hideBin(process.argv))
@@ -92,6 +94,25 @@ const argv = await yargs(hideBin(process.argv))
     default: "token",
     describe: "Cookie name for the JWT token (default: token)",
   })
+  .option("capture-console", {
+    type: "boolean",
+    default: false,
+    describe: "Capture browser console output (log, warn, error) per page",
+  })
+  .option("retry", {
+    type: "number",
+    default: 1,
+    describe: "Number of times to retry a page if it errors or has violations (default: 1)",
+  })
+  .option("stop-on-fail", {
+    type: "boolean",
+    default: false,
+    describe: "Stop scanning after the first page error or violation and write a partial report",
+  })
+  .option("console-log-file", {
+    type: "string",
+    describe: "File path to write browser console output (relative paths resolve to cwd)",
+  })
   .check((argv) => {
     const hasSitemap = argv._.length > 0;
     const hasUrls = !!(argv.urls || process.env.URLS);
@@ -121,7 +142,22 @@ const options: CliOptions = {
   showWarnings: process.env.WARNINGS === "true",
   jwtToken: argv["jwt-token"] ?? process.env.JWT_TOKEN,
   jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
+  consoleLogFile: (() => {
+    const raw = argv["console-log-file"] ?? process.env.CONSOLE_LOG_FILE;
+    return raw ? resolvePath(raw) : undefined;
+  })(),
+  captureConsole: !!(argv["capture-console"] || process.env.CAPTURE_CONSOLE === "true" || argv["console-log-file"] || process.env.CONSOLE_LOG_FILE),
+  retry: argv.retry ?? Number(process.env.RETRY ?? 1),
+  stopOnFail: argv["stop-on-fail"] || process.env.STOP_ON_FAIL === "true",
 };
+
+function askQuestion(prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(prompt, (answer) => { rl.close(); resolve(answer); });
+    rl.on("close", () => resolve(""));
+  });
+}
 
 async function main(): Promise<void> {
   let urls: string[];
@@ -178,19 +214,53 @@ async function main(): Promise<void> {
 
   console.log(`Starting audit with concurrency=${options.concurrency}...\n`);
 
+  if (options.consoleLogFile) {
+    await fs.writeFile(options.consoleLogFile, `Scan started: ${new Date().toISOString()}\nSource: ${sourceUrl}\n\n`);
+    console.log(`Browser console log: ${options.consoleLogFile}\n`);
+  }
+
+  const scanStart = Date.now();
   const browser = await chromium.launch({ headless: true });
   const limit = pLimit(options.concurrency);
   const results: PageResult[] = new Array(urls.length);
   let completed = 0;
+  let stopFlag = false;
+  let interrupted = false;
+
+  const handleSigint = () => {
+    if (interrupted) {
+      process.stdout.write("\nForce exit.\n");
+      process.exit(1);
+    }
+    interrupted = true;
+    stopFlag = true;
+    process.stdout.write("\n\n^C received — finishing in-flight pages (^C again to force exit)...\n");
+  };
+  process.on("SIGINT", handleSigint);
 
   const tasks = urls.map((url, index) =>
     limit(async () => {
+      if (stopFlag) return;
+
       if (options.verbose) {
         process.stdout.write(`[${index + 1}/${urls.length}] Checking: ${url}\n`);
       }
       const result = await auditPage(browser, url, options);
       results[index] = result;
       completed++;
+
+      if (options.consoleLogFile) {
+        const header = `=== ${result.url} ===\n`;
+        const messages = result.consoleMessages.length > 0
+          ? result.consoleMessages.map((m) => `[${m.type}] ${m.text}`).join("\n") + "\n"
+          : "";
+        await fs.appendFile(options.consoleLogFile, header + messages + "\n");
+      }
+
+      if (options.stopOnFail && (result.status === "error" || result.violations.length > 0)) {
+        stopFlag = true;
+        console.log(`\nStopping scan: ${result.status === "error" ? "page error" : "violations found"} on ${url}`);
+      }
 
       if (options.pause > 0) {
         await new Promise((resolve) => setTimeout(resolve, options.pause));
@@ -206,8 +276,28 @@ async function main(): Promise<void> {
 
   await Promise.all(tasks);
   await browser.close();
+  process.removeListener("SIGINT", handleSigint);
 
-  const report = buildReport(results, options, sourceUrl);
+  const completedResults = results.filter((r): r is PageResult => r !== undefined);
+
+  if (interrupted) {
+    console.log(`\nScan interrupted. ${completedResults.length} of ${urls.length} pages completed.`);
+    if (completedResults.length > 0) {
+      const answer = await askQuestion("Write partial report? [y/N] ");
+      if (answer.trim().toLowerCase().startsWith("y")) {
+        const report = buildReport(completedResults, options, sourceUrl, Date.now() - scanStart);
+        await writeReport(report, options);
+        console.log(`Partial report written to: ${options.output}.${options.format}`);
+      }
+    }
+    process.exit(0);
+  }
+
+  if (stopFlag) {
+    console.log(`  Partial scan: ${completedResults.length} of ${urls.length} pages checked.\n`);
+  }
+
+  const report = buildReport(completedResults, options, sourceUrl, Date.now() - scanStart);
 
   await writeReport(report, options);
 
@@ -215,6 +305,7 @@ async function main(): Promise<void> {
   const outputFile = `${options.output}.${ext}`;
 
   console.log(`\nScan complete!`);
+  console.log(`  Elapsed time:               ${formatDuration(report.durationMs)}`);
   console.log(`  Pages checked:              ${report.summary.totalPages}`);
   console.log(`  Pages with errors:          ${report.summary.pagesWithErrors}`);
   console.log(`  Total violations (failed):  ${report.summary.totalViolations}`);

@@ -21,7 +21,14 @@ import { join, dirname } from "path";
 import ExcelJS from "exceljs";
 import type { AuditReport, CliOptions, PageResult, ViolationRecord } from "./types.js";
 
-export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl: string): AuditReport {
+export function formatDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl: string, durationMs = 0): AuditReport {
   const allViolations = pages.flatMap((p) => p.violations);
 
   const ruleCounts = new Map<string, { ruleTitle: string; count: number }>();
@@ -43,6 +50,7 @@ export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl:
   return {
     generatedAt: new Date().toISOString(),
     sourceUrl,
+    durationMs,
     options,
     summary: {
       totalPages: pages.length,
@@ -151,6 +159,7 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   const s = report.summary;
 
   summarySheet.addRow(["Generated", report.generatedAt]);
+  summarySheet.addRow(["Elapsed Time", formatDuration(report.durationMs)]);
   summarySheet.addRow(["Source", report.sourceUrl]);
   summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options.wcagLevel)]);
   summarySheet.addRow([]);
@@ -231,6 +240,24 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
     for (const p of errorPages) {
       errSheet.addRow({ url: p.url, errorMessage: p.errorMessage ?? "" });
     }
+  }
+
+  const consolePages = report.pages.filter((p) => p.consoleMessages.length > 0);
+  if (consolePages.length > 0) {
+    const consoleSheet = workbook.addWorksheet("Console");
+    consoleSheet.columns = [
+      { header: "URL", key: "url", width: 60 },
+      { header: "Type", key: "type", width: 10 },
+      { header: "Message", key: "message", width: 90 },
+    ];
+    for (const p of consolePages) {
+      for (const msg of p.consoleMessages) {
+        consoleSheet.addRow({ url: p.url, type: msg.type, message: msg.text });
+      }
+    }
+    const consoleHeader = consoleSheet.getRow(1);
+    consoleHeader.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    consoleHeader.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF003057" } };
   }
 
   await workbook.xlsx.writeFile(`${outputPath}.xlsx`);
@@ -318,6 +345,20 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
           ? `<span class="tag tag--failed">${failCount} failed</span>`
           : `<span class="tag tag--cant-tell">${cantTellCount} cantTell</span>`;
 
+      const consoleSection = page.consoleMessages.length > 0
+        ? `<details class="console-log">
+            <summary>Console (${page.consoleMessages.length})</summary>
+            <div class="details-content">
+              <table>
+                <thead><tr><th>Type</th><th>Message</th></tr></thead>
+                <tbody>${page.consoleMessages.map((m) =>
+                  `<tr class="console-${m.type}"><td>${escapeHtml(m.type)}</td><td>${escapeHtml(m.text)}</td></tr>`
+                ).join("")}</tbody>
+              </table>
+            </div>
+          </details>`
+        : "";
+
       return `<details>
         <summary>${pageLink(page.url, report.options.baseUrl)} ${label}${cantTellCount > 0 && failCount > 0 ? ` <span class="tag tag--cant-tell">${cantTellCount} cantTell</span>` : ""}</summary>
         <div class="details-content">
@@ -326,6 +367,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
             <tbody>${violationRows}</tbody>
           </table>
         </div>
+        ${consoleSection}
       </details>`;
     })
     .join("\n");
@@ -335,7 +377,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Accessibility Audit Report — ${escapeHtml(report.sourceUrl)}</title>
+  <title>Accessibility Scan Report — ${escapeHtml(report.sourceUrl)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; background: #f5f5f5; padding: 24px; }
@@ -376,19 +418,23 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     a { color: #0066cc; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .error-msg { padding: 14px 18px; color: #c0392b; font-size: 0.9em; }
+    .console-log td { background: #f8f9fa; }
+    .console-warn td { background: #fffbea; }
+    .console-error td { background: #fff0f0; }
     .no-issues { padding: 14px 18px; color: #1e8449; font-size: 0.9em; }
     .summary--error { color: #c0392b !important; }
   </style>
 </head>
 <body>
-  <h1>Accessibility Audit Report</h1>
+  <h1>Accessibility Scan Report</h1>
   <p class="meta">
     Generated: ${escapeHtml(report.generatedAt)} &nbsp;|&nbsp;
+    Elapsed: ${escapeHtml(formatDuration(report.durationMs))} &nbsp;|&nbsp;
     Source: ${report.sourceUrl.startsWith("http") ? `<a href="${escapeHtml(report.sourceUrl)}" target="_blank">${escapeHtml(report.sourceUrl)}</a>` : escapeHtml(report.sourceUrl)} &nbsp;|&nbsp;
     WCAG Level: ${escapeHtml(formatWcagLevel(report.options.wcagLevel))}
   </p>
   <p class="about">
-    This report was generated using the <a href="https://github.com/Siteimprove/alfa" target="_blank">Siteimprove Alfa</a>
+    This report was generated using the open source <a href="https://github.com/Siteimprove/alfa" target="_blank">Siteimprove Alfa</a>
     accessibility code checker. Each page is evaluated in a fully-rendered headless browser so that
     client-side JavaScript is executed before analysis — producing results that reflect the actual DOM
     seen by assistive technologies, rather than the raw HTML source. Rules are evaluated against
@@ -412,7 +458,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 
   <footer>
     ${logoDataUri ? `<a href="https://2wav.com" target="_blank" aria-label="2wav inc."><img src="${logoDataUri}" alt="2wav inc." class="footer-logo"></a>` : ""}
-    <p>&copy; 2026, 2wav inc. All Rights Reserved.</p>
+    <p>This A11Y scanner software &copy; 2026, 2wav inc. All Rights Reserved. Free for use under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank">GNU Affero General Public License v3.0</a></p>
   </footer>
 </body>
 </html>`;
