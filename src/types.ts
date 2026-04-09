@@ -27,6 +27,7 @@ export interface CliOptions {
   wait: number;
   pause: number;
   wcagLevel: "a" | "aa" | "aaa";
+  includeAria: boolean;
   verbose: boolean;
   ignoreRules: string[];
   showWarnings: boolean;

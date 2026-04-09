@@ -1,0 +1,3 @@
+We built an Accessibility scanner that uses the Siteimprove Alfa (https://github.com/Siteimprove/alfa) open source evaluator with a headless browser, to evaluate fully loaded and hydrated site pages. Many A11Y scanners seem to evaluate raw html from the server, which is a problem for sites built with advanced frameworks or SPAs. There may be many organizations struggling with the upcoming April 26, 2026 deadline for the ADA Title II Web Accessibility Rule who would benefit from this tool, so we open sourced it. Available on github under AGPL-3.0: https://github.com/anderson-2wav/alfa-a11y-scan 
+
+

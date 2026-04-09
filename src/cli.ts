@@ -71,6 +71,11 @@ const argv = await yargs(hideBin(process.argv))
     default: "aa" as const,
     describe: "WCAG conformance level (default: WCAG 2.1 AA)",
   })
+  .option("aria", {
+    type: "boolean",
+    default: true,
+    describe: "Include WAI-ARIA authoring practice rules (default: true, matches Siteimprove scanner)",
+  })
   .option("verbose", {
     alias: "v",
     type: "boolean",
@@ -101,8 +106,8 @@ const argv = await yargs(hideBin(process.argv))
   })
   .option("retry", {
     type: "number",
-    default: 1,
-    describe: "Number of times to retry a page if it errors or has violations (default: 1)",
+    default: 0,
+    describe: "Number of times to retry a page if it errors or has violations (default: 0)",
   })
   .option("stop-on-fail", {
     type: "boolean",
@@ -135,6 +140,7 @@ const options: CliOptions = {
   wait: argv.wait,
   pause: argv.pause,
   wcagLevel: argv["wcag-level"],
+  includeAria: argv.aria ?? process.env.INCLUDE_ARIA !== "false",
   verbose: argv.verbose,
   ignoreRules: process.env.IGNORE_RULES
     ? process.env.IGNORE_RULES.split(",").map((r) => r.trim()).filter(Boolean)
@@ -147,7 +153,7 @@ const options: CliOptions = {
     return raw ? resolvePath(raw) : undefined;
   })(),
   captureConsole: !!(argv["capture-console"] || process.env.CAPTURE_CONSOLE === "true" || argv["console-log-file"] || process.env.CONSOLE_LOG_FILE),
-  retry: argv.retry ?? Number(process.env.RETRY ?? 1),
+  retry: argv.retry ?? Number(process.env.RETRY ?? 0),
   stopOnFail: argv["stop-on-fail"] || process.env.STOP_ON_FAIL === "true",
 };
 

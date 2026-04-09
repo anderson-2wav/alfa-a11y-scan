@@ -1,0 +1,1 @@
+Similar to our A11Y evaluator https://github.com/anderson-2wav/alfa-a11y-scan, we have a similar need for a broken link checker that evaluates fully hydrated pages from our Nuxt & Meteor sites. None of the available tools that we have found do this, so we built one. Available on github: https://github.com/anderson-2wav/2wav-link-checker 
