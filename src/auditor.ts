@@ -18,6 +18,7 @@
 import { chromium, type Browser } from "playwright";
 import { Playwright } from "@siteimprove/alfa-playwright";
 import { Audit, Rules } from "@siteimprove/alfa-test-utils";
+import { Predicate } from "@siteimprove/alfa-predicate";
 import type { CliOptions, ConsoleMessage, PageResult, ViolationRecord } from "./types.js";
 
 export { chromium };
@@ -83,19 +84,26 @@ export async function auditPage(
     const alfaPage = await Playwright.toPage(documentHandle as any);
 
     // Default is WCAG 2.1 AA (wcag21aaFilter).
-    // "aaa" runs all rules by omitting the include filter.
-    const ruleFilter =
+    // "aaa" with --no-aria runs all rules by omitting the include filter.
+    const wcagFilter =
       options.wcagLevel === "a"
         ? Rules.wcag20aaFilter  // closest approximation; no standalone A-only filter
         : options.wcagLevel === "aaa"
           ? undefined
           : Rules.wcag21aaFilter;  // default: WCAG 2.1 AA
+    const ruleFilter =
+      wcagFilter && options.includeAria
+        ? Predicate.or(wcagFilter, Rules.ARIAFilter)
+        : options.includeAria && !wcagFilter
+          ? undefined  // aaa already covers everything
+          : wcagFilter;
     const auditOptions = ruleFilter ? { rules: { include: ruleFilter } } : {};
 
     const audit = await Audit.run(alfaPage, auditOptions);
     const wcagLevelDisplay =
-      options.wcagLevel === "a" ? "2.0 A" :
-      options.wcagLevel === "aaa" ? "2.1 AAA" : "2.1 AA";
+      (options.wcagLevel === "a" ? "2.0 A" :
+      options.wcagLevel === "aaa" ? "2.1 AAA" : "2.1 AA") +
+      (options.includeAria && options.wcagLevel !== "aaa" ? " + WAI-ARIA" : "");
     const violations = extractViolations(url, audit).filter(
       (v) =>
         !options.ignoreRules.includes(v.ruleId) &&
