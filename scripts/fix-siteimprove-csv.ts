@@ -132,7 +132,7 @@ if (args.length < 1) {
 const inputPath = path.resolve(args[0]);
 const outputPath = args[1]
   ? path.resolve(args[1])
-  : inputPath.replace(/(\.[^.]+)?$/, "-fixed.csv");
+  : inputPath.replace(/(\.[^.]+)?$/, "-reformatted.csv");
 
 if (!fs.existsSync(inputPath)) {
   console.error(`File not found: ${inputPath}`);
