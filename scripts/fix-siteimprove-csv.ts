@@ -57,6 +57,41 @@ function toCsvRow(values: string[]): string {
   return values.map(toCsvCell).join(",");
 }
 
+function metaValue(lines: string[], prefix: string): string {
+  const line = lines.find((l) => l.startsWith(prefix));
+  return line ? line.slice(prefix.length).trim() : "";
+}
+
+function convertSingleIssue(lines: string[], outputPath: string): void {
+  // Format B: metadata header, then a tab-separated page table.
+  const issueName  = metaValue(lines, "Issue name:");
+  const issueType  = metaValue(lines, "Issue type:");
+  const site       = metaValue(lines, "Site:");
+  const wcagVer    = metaValue(lines, "WCAG version:");
+
+  // Find the header row (first cell = "Title")
+  const headerIdx = lines.findIndex((l) => parseRow(l)[0] === "Title");
+  if (headerIdx === -1) {
+    console.error("Could not find page header row (Title).");
+    process.exit(1);
+  }
+
+  const outputRows: string[][] = [
+    ["Issue", "Issue type", "Site", "WCAG version", ...PAGE_HEADERS],
+  ];
+
+  for (const line of lines.slice(headerIdx + 1)) {
+    if (!line.trim()) continue;
+    const cells = parseRow(line);
+    while (cells.length < 5) cells.push("");
+    outputRows.push([issueName, issueType, site, wcagVer, ...cells.slice(0, 5)]);
+  }
+
+  const csv = outputRows.map(toCsvRow).join("\n");
+  fs.writeFileSync(outputPath, csv, "utf8");
+  console.log(`Wrote ${outputRows.length - 1} data rows to ${outputPath}`);
+}
+
 function convert(inputPath: string, outputPath: string): void {
   const raw = fs.readFileSync(inputPath);
 
@@ -67,6 +102,11 @@ function convert(inputPath: string, outputPath: string): void {
     : raw.toString("utf8");
 
   const lines = text.split(/\r?\n/);
+
+  // Format B: "Pages with a specific issue" — has "Issue name:" in the metadata
+  if (lines.slice(0, 6).some((l) => l.startsWith("Issue name:"))) {
+    return convertSingleIssue(lines, outputPath);
+  }
 
   // Skip metadata lines (first METADATA_LINES non-empty structural lines)
   const dataLines = lines.slice(METADATA_LINES).filter((l) => l.trim() !== "");
