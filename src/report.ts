@@ -162,6 +162,10 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   summarySheet.addRow(["Elapsed Time", formatDuration(report.durationMs)]);
   summarySheet.addRow(["Source", report.sourceUrl]);
   summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options.wcagLevel)]);
+  if (report.options.onlyRules.length > 0)
+    summarySheet.addRow(["Only Rules", report.options.onlyRules.join(", ")]);
+  if (report.options.ignoreRules.length > 0)
+    summarySheet.addRow(["Ignored Rules", report.options.ignoreRules.join(", ")]);
   summarySheet.addRow([]);
   summarySheet.addRow([
     "About",
@@ -432,6 +436,8 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     Elapsed: ${escapeHtml(formatDuration(report.durationMs))} &nbsp;|&nbsp;
     Source: ${report.sourceUrl.startsWith("http") ? `<a href="${escapeHtml(report.sourceUrl)}" target="_blank">${escapeHtml(report.sourceUrl)}</a>` : escapeHtml(report.sourceUrl)} &nbsp;|&nbsp;
     WCAG Level: ${escapeHtml(formatWcagLevel(report.options.wcagLevel))}
+    ${report.options.onlyRules.length > 0 ? ` &nbsp;|&nbsp; Only rules: ${escapeHtml(report.options.onlyRules.join(", "))}` : ""}
+    ${report.options.ignoreRules.length > 0 ? ` &nbsp;|&nbsp; Ignored rules: ${escapeHtml(report.options.ignoreRules.join(", "))}` : ""}
   </p>
   <p class="about">
     This report was generated using the open source <a href="https://github.com/Siteimprove/alfa" target="_blank">Siteimprove Alfa</a>

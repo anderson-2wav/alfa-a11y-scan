@@ -114,6 +114,10 @@ const argv = await yargs(hideBin(process.argv))
     default: false,
     describe: "Stop scanning after the first page error or violation and write a partial report",
   })
+  .option("only-rules", {
+    type: "string",
+    describe: "Comma-separated rule IDs to include (all others are excluded), e.g. sia-r55,sia-r81",
+  })
   .option("console-log-file", {
     type: "string",
     describe: "File path to write browser console output (relative paths resolve to cwd)",
@@ -145,6 +149,10 @@ const options: CliOptions = {
   ignoreRules: process.env.IGNORE_RULES
     ? process.env.IGNORE_RULES.split(",").map((r) => r.trim()).filter(Boolean)
     : [],
+  onlyRules: (() => {
+    const raw = argv["only-rules"] ?? process.env.ONLY_RULES;
+    return raw ? raw.split(",").map((r) => r.trim()).filter(Boolean) : [];
+  })(),
   showWarnings: process.env.WARNINGS === "true",
   jwtToken: argv["jwt-token"] ?? process.env.JWT_TOKEN,
   jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
