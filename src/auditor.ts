@@ -107,6 +107,7 @@ export async function auditPage(
     const violations = extractViolations(url, audit).filter(
       (v) =>
         !options.ignoreRules.includes(v.ruleId) &&
+        (options.onlyRules.length === 0 || options.onlyRules.includes(v.ruleId)) &&
         (options.showWarnings || v.outcome === "failed")
     );
     violations.forEach((v) => { v.wcagLevel = wcagLevelDisplay; });

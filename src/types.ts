@@ -30,6 +30,7 @@ export interface CliOptions {
   includeAria: boolean;
   verbose: boolean;
   ignoreRules: string[];
+  onlyRules: string[];
   showWarnings: boolean;
   jwtToken?: string;
   jwtCookieName: string;
