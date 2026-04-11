@@ -2,13 +2,19 @@
 /**
  * Converts badly-encoded Siteimprove CSV exports to clean CSV.
  *
- * Siteimprove exports UTF-16 LE files with tab-separated quoted values.
- * The first 8 lines are metadata. After that:
+ * Handles two export formats:
+ *
+ * Format A — "Potential Issues" / multi-issue export:
+ *   UTF-16 LE, tab-separated. First 8 lines are metadata. After that:
  *   - Issue rows have 11 columns (issue-level data)
  *   - Immediately following each issue row is an optional sub-header + page rows,
  *     each prefixed by 11 empty tab columns, then: Title, URL, Page Report, Occurrences, Page views
+ *   Output: flattened CSV — one row per page, issue info repeated.
  *
- * Output: flattened CSV — one row per page occurrence, with issue info repeated.
+ * Format B — "Pages with a specific issue" / single-issue export:
+ *   UTF-16 LE, tab-separated. Metadata lines include "Issue name:", "Issue type:", etc.
+ *   Line 7 is the column header (Title, URL, Page Report, Occurrences, Page views).
+ *   Output: one row per page with issue metadata repeated.
  *
  * Usage:
  *   node --import tsx scripts/fix-siteimprove-csv.ts <input.csv> [output.csv]

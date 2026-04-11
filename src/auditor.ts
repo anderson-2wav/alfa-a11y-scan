@@ -178,9 +178,26 @@ function extractViolations(pageUrl: string, audit: any): ViolationRecord[] {
 
       try {
         const target = outcome.target;
-        // path() returns the XPath like /html[1]/body[1]/...
-        const xpath: string =
-          typeof target?.path === "function" ? String(target.path()) : "";
+
+        // SIA-R55 and similar rules use a Group target (iterable, has .size, no .path()).
+        // Collect each member's XPath so we can surface all elements being compared.
+        const isGroup =
+          typeof target?.size === "number" &&
+          typeof target?.[Symbol.iterator] === "function" &&
+          typeof target?.path !== "function";
+
+        let xpath = "";
+        let groupXPaths: string[] = [];
+        if (isGroup) {
+          for (const member of target) {
+            const p = typeof member?.path === "function" ? String(member.path()) : "";
+            if (p) groupXPaths.push(p);
+          }
+          xpath = groupXPaths[0] ?? "";
+        } else {
+          // path() returns the XPath like /html[1]/body[1]/...
+          xpath = typeof target?.path === "function" ? String(target.path()) : "";
+        }
 
         // For Text nodes target.name is undefined; use the constructor name instead
         const tagName: string =
@@ -209,6 +226,23 @@ function extractViolations(pageUrl: string, audit: any): ViolationRecord[] {
             typeof diagnostic?.message === "string"
               ? diagnostic.message
               : String(diagnostic ?? "");
+          // Some diagnostics carry extra fields identifying the element(s).
+          // SIA-R81 (equivalent links): `name` = shared link text
+          // SIA-R55 (equivalent landmarks): `role` + `name` = landmark role and accessible name
+          if (typeof diagnostic?.role === "string" && diagnostic.role) {
+            message += ` [landmark role: "${diagnostic.role}"`;
+            if (typeof diagnostic?.name === "string" && diagnostic.name) {
+              message += `, landmark name: "${diagnostic.name}"`;
+            }
+            if (groupXPaths.length > 1) {
+              message += `, elements: ${groupXPaths.join(" | ")}`;
+            }
+            message += `]`;
+          } else if (typeof diagnostic?.name === "string" && diagnostic.name) {
+            message += ` [link text: "${diagnostic.name}"]`;
+          } else if (groupXPaths.length > 1) {
+            message += ` [elements: ${groupXPaths.join(" | ")}]`;
+          }
         }
 
         violations.push({
