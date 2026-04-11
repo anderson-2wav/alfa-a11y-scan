@@ -317,14 +317,14 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
       const cantTellCount = page.violations.filter((v) => v.outcome === "cantTell").length;
 
       if (page.status === "error") {
-        return `<details>
+        return `<details data-url="${escapeHtml(page.url)}" data-status="error">
           <summary class="summary--error">${pageLink(page.url, report.options.baseUrl)} <span class="tag tag--error">ERROR</span></summary>
           <div class="details-content"><p class="error-msg">${escapeHtml(page.errorMessage ?? "Unknown error")}</p></div>
         </details>`;
       }
 
       if (page.violations.length === 0) {
-        return `<details>
+        return `<details data-url="${escapeHtml(page.url)}" data-status="passed">
           <summary class="summary--pass">${pageLink(page.url, report.options.baseUrl)} <span class="tag tag--pass">0 issues</span></summary>
           <div class="details-content"><p class="no-issues">No violations found.</p></div>
         </details>`;
@@ -349,6 +349,8 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
           ? `<span class="tag tag--failed">${failCount} failed</span>`
           : `<span class="tag tag--cant-tell">${cantTellCount} cantTell</span>`;
 
+      const pageStatus = failCount > 0 ? "failed" : "canttell";
+
       const consoleSection = page.consoleMessages.length > 0
         ? `<details class="console-log">
             <summary>Console (${page.consoleMessages.length})</summary>
@@ -363,7 +365,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
           </details>`
         : "";
 
-      return `<details>
+      return `<details data-url="${escapeHtml(page.url)}" data-status="${pageStatus}">
         <summary>${pageLink(page.url, report.options.baseUrl)} ${label}${cantTellCount > 0 && failCount > 0 ? ` <span class="tag tag--cant-tell">${cantTellCount} cantTell</span>` : ""}</summary>
         <div class="details-content">
           <table>
@@ -427,6 +429,12 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     .console-error td { background: #fff0f0; }
     .no-issues { padding: 14px 18px; color: #1e8449; font-size: 0.9em; }
     .summary--error { color: #c0392b !important; }
+    .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    #url-search { flex: 1; min-width: 200px; padding: 7px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em; }
+    .filter-buttons { display: flex; gap: 4px; flex-shrink: 0; }
+    .filter-btn { padding: 6px 12px; border: 1px solid #ccc; border-radius: 5px; background: #fff; cursor: pointer; font-size: 0.82em; color: #555; }
+    .filter-btn.active { background: #003057; color: #fff; border-color: #003057; }
+    .filter-count { font-size: 0.82em; color: #888; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -460,7 +468,43 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   }
 
   <h2>Results by Page</h2>
-  ${pageDetails}
+  <div class="filter-bar">
+    <input type="search" id="url-search" placeholder="Filter by URL…" oninput="applyFilters()" autocomplete="off">
+    <div class="filter-buttons" role="group" aria-label="Filter by status">
+      <button class="filter-btn active" data-filter="all"    onclick="setFilter(this)">All</button>
+      <button class="filter-btn"        data-filter="error"  onclick="setFilter(this)">Errors</button>
+      <button class="filter-btn"        data-filter="failed" onclick="setFilter(this)">Violations</button>
+      <button class="filter-btn"        data-filter="canttell" onclick="setFilter(this)">cantTell</button>
+      <button class="filter-btn"        data-filter="passed" onclick="setFilter(this)">Passed</button>
+    </div>
+    <span id="filter-count" class="filter-count"></span>
+  </div>
+  <div id="page-details">${pageDetails}</div>
+  <script>
+    let activeFilter = 'all';
+    function applyFilters() {
+      const query = document.getElementById('url-search').value.toLowerCase();
+      const items = document.querySelectorAll('#page-details details');
+      let visible = 0;
+      items.forEach(el => {
+        const url = (el.dataset.url || '').toLowerCase();
+        const status = el.dataset.status || '';
+        const matchUrl = !query || url.includes(query);
+        const matchStatus = activeFilter === 'all' || status === activeFilter;
+        const show = matchUrl && matchStatus;
+        el.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      document.getElementById('filter-count').textContent = visible + ' of ' + items.length + ' pages';
+    }
+    function setFilter(btn) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      applyFilters();
+    }
+    applyFilters();
+  </script>
 
   <footer>
     ${logoDataUri ? `<a href="https://2wav.com" target="_blank" aria-label="2wav inc."><img src="${logoDataUri}" alt="2wav inc." class="footer-logo"></a>` : ""}
