@@ -129,6 +129,48 @@ export async function auditPage(
     const htmlSnippets = await fetchElementHtml(page, xpaths);
     violations.forEach((v, i) => { v.elementHtml = htmlSnippets[i] ?? ""; });
 
+    // sia-r87 targets the document (not a specific element), so elementHtml is
+    // always empty. Do a separate pass to find the first focusable element and
+    // replace the opaque "No extra information" message with something actionable.
+    const r87 = violations.filter((v) => v.ruleId === "sia-r87");
+    if (r87.length > 0) {
+      const firstFocusable = await page.evaluate(() => {
+        const sel = [
+          "a[href]", "button:not([disabled])", "input:not([disabled])",
+          "select:not([disabled])", "textarea:not([disabled])",
+          "[tabindex]:not([tabindex='-1'])",
+        ].join(", ");
+        const el = Array.from(document.querySelectorAll<HTMLElement>(sel)).find((el) => {
+          const s = getComputedStyle(el);
+          return s.display !== "none" && s.visibility !== "hidden" && el.offsetParent !== null;
+        });
+        if (!el) return null;
+        const html = el.outerHTML;
+        return {
+          tag: el.tagName.toLowerCase(),
+          html: html.length > 500 ? html.slice(0, 500) + "…" : html,
+          href: (el as HTMLAnchorElement).href ?? "",
+        };
+      }).catch(() => null);
+
+      for (const v of r87) {
+        if (firstFocusable) {
+          v.elementTag = firstFocusable.tag;
+          v.elementHtml = firstFocusable.html;
+          if (!v.diagnosticMessage || v.diagnosticMessage === "No extra information") {
+            v.diagnosticMessage =
+              `Alfa could not automatically verify the skip link. ` +
+              `First focusable element: <${firstFocusable.tag}>` +
+              (firstFocusable.href ? ` → ${firstFocusable.href}` : "") +
+              `. Confirm it is visible on focus and links to the start of main content.`;
+          }
+        } else if (!v.diagnosticMessage || v.diagnosticMessage === "No extra information") {
+          v.diagnosticMessage =
+            "Alfa could not automatically verify the skip link. No focusable element found before main content.";
+        }
+      }
+    }
+
     const counts = countByOutcome(audit);
 
     // If violations found and retries remain, give the page another chance
