@@ -83,20 +83,32 @@ export async function auditPage(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const alfaPage = await Playwright.toPage(documentHandle as any);
 
-    // Default is WCAG 2.1 AA (wcag21aaFilter).
-    // "aaa" with --no-aria runs all rules by omitting the include filter.
-    const wcagFilter =
-      options.wcagLevel === "a"
-        ? Rules.wcag20aaFilter  // closest approximation; no standalone A-only filter
-        : options.wcagLevel === "aaa"
-          ? undefined
-          : Rules.wcag21aaFilter;  // default: WCAG 2.1 AA
-    const ruleFilter =
-      wcagFilter && options.includeAria
-        ? Predicate.or(wcagFilter, Rules.ARIAFilter)
-        : options.includeAria && !wcagFilter
-          ? undefined  // aaa already covers everything
-          : wcagFilter;
+    // If specific rules are requested, cherry-pick them directly.
+    // This bypasses the WCAG filter, which only matches Criterion-based rules
+    // and would silently exclude rules like sia-r87 (Technique-based, Experimental).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let ruleFilter: ((rule: any) => boolean) | undefined;
+    if (options.onlyRules.length > 0) {
+      ruleFilter = Rules.cherryPickFilter(options.onlyRules.map((id) => {
+        const m = id.match(/\d+$/);
+        return m ? Number(m[0]) : NaN;
+      }).filter((n) => !isNaN(n)));
+    } else {
+      // Default is WCAG 2.1 AA (wcag21aaFilter).
+      // "aaa" with --no-aria runs all rules by omitting the include filter.
+      const wcagFilter =
+        options.wcagLevel === "a"
+          ? Rules.wcag20aaFilter  // closest approximation; no standalone A-only filter
+          : options.wcagLevel === "aaa"
+            ? undefined
+            : Rules.wcag21aaFilter;  // default: WCAG 2.1 AA
+      ruleFilter =
+        wcagFilter && options.includeAria
+          ? Predicate.or(wcagFilter, Rules.ARIAFilter)
+          : options.includeAria && !wcagFilter
+            ? undefined  // aaa already covers everything
+            : wcagFilter;
+    }
     const auditOptions = ruleFilter ? { rules: { include: ruleFilter } } : {};
 
     const audit = await Audit.run(alfaPage, auditOptions);
