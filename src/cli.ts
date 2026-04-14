@@ -71,6 +71,11 @@ const argv = await yargs(hideBin(process.argv))
     default: "aa" as const,
     describe: "WCAG conformance level (default: WCAG 2.1 AA)",
   })
+  .option("aria", {
+    type: "boolean",
+    default: true,
+    describe: "Include WAI-ARIA authoring practice rules (default: true, matches Siteimprove scanner)",
+  })
   .option("verbose", {
     alias: "v",
     type: "boolean",
@@ -101,13 +106,17 @@ const argv = await yargs(hideBin(process.argv))
   })
   .option("retry", {
     type: "number",
-    default: 1,
-    describe: "Number of times to retry a page if it errors or has violations (default: 1)",
+    default: 0,
+    describe: "Number of times to retry a page if it errors or has violations (default: 0)",
   })
   .option("stop-on-fail", {
     type: "boolean",
     default: false,
     describe: "Stop scanning after the first page error or violation and write a partial report",
+  })
+  .option("only-rules", {
+    type: "string",
+    describe: "Comma-separated rule IDs to include (all others are excluded), e.g. sia-r55,sia-r81",
   })
   .option("console-log-file", {
     type: "string",
@@ -135,10 +144,15 @@ const options: CliOptions = {
   wait: argv.wait,
   pause: argv.pause,
   wcagLevel: argv["wcag-level"],
+  includeAria: argv.aria ?? process.env.INCLUDE_ARIA !== "false",
   verbose: argv.verbose,
   ignoreRules: process.env.IGNORE_RULES
     ? process.env.IGNORE_RULES.split(",").map((r) => r.trim()).filter(Boolean)
     : [],
+  onlyRules: (() => {
+    const raw = argv["only-rules"] ?? process.env.ONLY_RULES;
+    return raw ? raw.split(",").map((r) => r.trim()).filter(Boolean) : [];
+  })(),
   showWarnings: process.env.WARNINGS === "true",
   jwtToken: argv["jwt-token"] ?? process.env.JWT_TOKEN,
   jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
@@ -147,7 +161,7 @@ const options: CliOptions = {
     return raw ? resolvePath(raw) : undefined;
   })(),
   captureConsole: !!(argv["capture-console"] || process.env.CAPTURE_CONSOLE === "true" || argv["console-log-file"] || process.env.CONSOLE_LOG_FILE),
-  retry: argv.retry ?? Number(process.env.RETRY ?? 1),
+  retry: argv.retry ?? Number(process.env.RETRY ?? 0),
   stopOnFail: argv["stop-on-fail"] || process.env.STOP_ON_FAIL === "true",
 };
 

@@ -18,6 +18,7 @@
 import { chromium, type Browser } from "playwright";
 import { Playwright } from "@siteimprove/alfa-playwright";
 import { Audit, Rules } from "@siteimprove/alfa-test-utils";
+import { Predicate } from "@siteimprove/alfa-predicate";
 import type { CliOptions, ConsoleMessage, PageResult, ViolationRecord } from "./types.js";
 
 export { chromium };
@@ -82,23 +83,43 @@ export async function auditPage(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const alfaPage = await Playwright.toPage(documentHandle as any);
 
-    // Default is WCAG 2.1 AA (wcag21aaFilter).
-    // "aaa" runs all rules by omitting the include filter.
-    const ruleFilter =
-      options.wcagLevel === "a"
-        ? Rules.wcag20aaFilter  // closest approximation; no standalone A-only filter
-        : options.wcagLevel === "aaa"
-          ? undefined
-          : Rules.wcag21aaFilter;  // default: WCAG 2.1 AA
+    // If specific rules are requested, cherry-pick them directly.
+    // This bypasses the WCAG filter, which only matches Criterion-based rules
+    // and would silently exclude rules like sia-r87 (Technique-based, Experimental).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let ruleFilter: ((rule: any) => boolean) | undefined;
+    if (options.onlyRules.length > 0) {
+      ruleFilter = Rules.cherryPickFilter(options.onlyRules.map((id) => {
+        const m = id.match(/\d+$/);
+        return m ? Number(m[0]) : NaN;
+      }).filter((n) => !isNaN(n)));
+    } else {
+      // Default is WCAG 2.1 AA (wcag21aaFilter).
+      // "aaa" with --no-aria runs all rules by omitting the include filter.
+      const wcagFilter =
+        options.wcagLevel === "a"
+          ? Rules.wcag20aaFilter  // closest approximation; no standalone A-only filter
+          : options.wcagLevel === "aaa"
+            ? undefined
+            : Rules.wcag21aaFilter;  // default: WCAG 2.1 AA
+      ruleFilter =
+        wcagFilter && options.includeAria
+          ? Predicate.or(wcagFilter, Rules.ARIAFilter)
+          : options.includeAria && !wcagFilter
+            ? undefined  // aaa already covers everything
+            : wcagFilter;
+    }
     const auditOptions = ruleFilter ? { rules: { include: ruleFilter } } : {};
 
     const audit = await Audit.run(alfaPage, auditOptions);
     const wcagLevelDisplay =
-      options.wcagLevel === "a" ? "2.0 A" :
-      options.wcagLevel === "aaa" ? "2.1 AAA" : "2.1 AA";
+      (options.wcagLevel === "a" ? "2.0 A" :
+      options.wcagLevel === "aaa" ? "2.1 AAA" : "2.1 AA") +
+      (options.includeAria && options.wcagLevel !== "aaa" ? " + WAI-ARIA" : "");
     const violations = extractViolations(url, audit).filter(
       (v) =>
         !options.ignoreRules.includes(v.ruleId) &&
+        (options.onlyRules.length === 0 || options.onlyRules.includes(v.ruleId)) &&
         (options.showWarnings || v.outcome === "failed")
     );
     violations.forEach((v) => { v.wcagLevel = wcagLevelDisplay; });
@@ -107,6 +128,48 @@ export async function auditPage(
     const xpaths = violations.map((v) => v.elementXPath);
     const htmlSnippets = await fetchElementHtml(page, xpaths);
     violations.forEach((v, i) => { v.elementHtml = htmlSnippets[i] ?? ""; });
+
+    // sia-r87 targets the document (not a specific element), so elementHtml is
+    // always empty. Do a separate pass to find the first focusable element and
+    // replace the opaque "No extra information" message with something actionable.
+    const r87 = violations.filter((v) => v.ruleId === "sia-r87");
+    if (r87.length > 0) {
+      const firstFocusable = await page.evaluate(() => {
+        const sel = [
+          "a[href]", "button:not([disabled])", "input:not([disabled])",
+          "select:not([disabled])", "textarea:not([disabled])",
+          "[tabindex]:not([tabindex='-1'])",
+        ].join(", ");
+        const el = Array.from(document.querySelectorAll<HTMLElement>(sel)).find((el) => {
+          const s = getComputedStyle(el);
+          return s.display !== "none" && s.visibility !== "hidden" && el.offsetParent !== null;
+        });
+        if (!el) return null;
+        const html = el.outerHTML;
+        return {
+          tag: el.tagName.toLowerCase(),
+          html: html.length > 500 ? html.slice(0, 500) + "…" : html,
+          href: (el as HTMLAnchorElement).href ?? "",
+        };
+      }).catch(() => null);
+
+      for (const v of r87) {
+        if (firstFocusable) {
+          v.elementTag = firstFocusable.tag;
+          v.elementHtml = firstFocusable.html;
+          if (!v.diagnosticMessage || v.diagnosticMessage === "No extra information") {
+            v.diagnosticMessage =
+              `Alfa could not automatically verify the skip link. ` +
+              `First focusable element: <${firstFocusable.tag}>` +
+              (firstFocusable.href ? ` → ${firstFocusable.href}` : "") +
+              `. Confirm it is visible on focus and links to the start of main content.`;
+          }
+        } else if (!v.diagnosticMessage || v.diagnosticMessage === "No extra information") {
+          v.diagnosticMessage =
+            "Alfa could not automatically verify the skip link. No focusable element found before main content.";
+        }
+      }
+    }
 
     const counts = countByOutcome(audit);
 
@@ -170,9 +233,26 @@ function extractViolations(pageUrl: string, audit: any): ViolationRecord[] {
 
       try {
         const target = outcome.target;
-        // path() returns the XPath like /html[1]/body[1]/...
-        const xpath: string =
-          typeof target?.path === "function" ? String(target.path()) : "";
+
+        // SIA-R55 and similar rules use a Group target (iterable, has .size, no .path()).
+        // Collect each member's XPath so we can surface all elements being compared.
+        const isGroup =
+          typeof target?.size === "number" &&
+          typeof target?.[Symbol.iterator] === "function" &&
+          typeof target?.path !== "function";
+
+        let xpath = "";
+        let groupXPaths: string[] = [];
+        if (isGroup) {
+          for (const member of target) {
+            const p = typeof member?.path === "function" ? String(member.path()) : "";
+            if (p) groupXPaths.push(p);
+          }
+          xpath = groupXPaths[0] ?? "";
+        } else {
+          // path() returns the XPath like /html[1]/body[1]/...
+          xpath = typeof target?.path === "function" ? String(target.path()) : "";
+        }
 
         // For Text nodes target.name is undefined; use the constructor name instead
         const tagName: string =
@@ -201,6 +281,23 @@ function extractViolations(pageUrl: string, audit: any): ViolationRecord[] {
             typeof diagnostic?.message === "string"
               ? diagnostic.message
               : String(diagnostic ?? "");
+          // Some diagnostics carry extra fields identifying the element(s).
+          // SIA-R81 (equivalent links): `name` = shared link text
+          // SIA-R55 (equivalent landmarks): `role` + `name` = landmark role and accessible name
+          if (typeof diagnostic?.role === "string" && diagnostic.role) {
+            message += ` [landmark role: "${diagnostic.role}"`;
+            if (typeof diagnostic?.name === "string" && diagnostic.name) {
+              message += `, landmark name: "${diagnostic.name}"`;
+            }
+            if (groupXPaths.length > 1) {
+              message += `, elements: ${groupXPaths.join(" | ")}`;
+            }
+            message += `]`;
+          } else if (typeof diagnostic?.name === "string" && diagnostic.name) {
+            message += ` [link text: "${diagnostic.name}"]`;
+          } else if (groupXPaths.length > 1) {
+            message += ` [elements: ${groupXPaths.join(" | ")}]`;
+          }
         }
 
         violations.push({
