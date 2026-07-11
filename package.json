@@ -8,7 +8,8 @@
     "start": ". .env; node --env-file=.env --max-old-space-size=16382 --import tsx src/cli.ts $SITEMAP -o $OUTPUT -f html -v --wait 4000 --timeout 30000",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
-    "test": "mocha"
+    "test": "mocha",
+    "test:live": "LIVE_TESTS=1 mocha --grep ncran"
   },
   "dependencies": {
     "@siteimprove/alfa-playwright": "^0.81.0",
