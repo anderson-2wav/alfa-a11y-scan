@@ -4,7 +4,9 @@ node_modules
 .idea
 # output files
 *.html
+*-urls.json
 *.csv
 *.xlsx
 .DS_Store
 .private
+reference
