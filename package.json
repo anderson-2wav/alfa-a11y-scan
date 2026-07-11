@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": ". .env; node --env-file=.env --max-old-space-size=16382 --import tsx src/cli.ts $SITEMAP -o $OUTPUT -f html -v --wait 4000 --timeout 30000",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test": "mocha"
   },
   "dependencies": {
     "@siteimprove/alfa-playwright": "^0.81.0",
@@ -18,8 +20,12 @@
     "yargs": "^17.7.0"
   },
   "devDependencies": {
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^22.0.0",
     "@types/yargs": "^17.0.35",
+    "chai": "^6.2.2",
+    "mocha": "^11.7.6",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0"
   }
