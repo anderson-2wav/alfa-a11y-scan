@@ -397,78 +397,138 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 
   const shortName = (engine: EngineName) => (engine === "alfa" ? "Alfa" : "OpenA11y");
 
+  const engineFilterButtons = isBoth
+    ? `<div class="filter-buttons" role="group" aria-label="Filter by engine">
+      <button class="filter-btn engine-btn active" data-engine-filter="all" onclick="setEngine(this)">All engines</button>
+      <button class="filter-btn engine-btn" data-engine-filter="alfa" onclick="setEngine(this)">Alfa</button>
+      <button class="filter-btn engine-btn" data-engine-filter="opena11y" onclick="setEngine(this)">OpenA11y</button>
+    </div>`
+    : "";
+
   const topViolationsSection = isBoth
     ? s.engines
         .map((engine) => `<h2>Top ${shortName(engine)} Violations</h2>\n  ${topTable(engine, s.byEngine[engine]!.violationsByRule)}`)
         .join("\n\n  ")
     : `<h2>Most Common Violations</h2>\n  ${topTable(primaryEngine, s.violationsByRule)}`;
 
-  const pageDetails = report.pages
-    .map((page) => {
-      const failCount = page.violations.filter((v) => v.outcome === "failed").length;
-      const cantTellCount = page.violations.filter((v) => v.outcome === "cantTell").length;
+  const worstStatus = (results: PageResult[]): string => {
+    if (results.some((r) => r.status === "error")) return "error";
+    if (results.some((r) => r.violations.some((v) => v.outcome === "failed"))) return "failed";
+    if (results.some((r) => r.violations.some((v) => v.outcome === "cantTell"))) return "canttell";
+    return "passed";
+  };
 
-      if (page.status === "error") {
-        return `<details data-url="${escapeHtml(page.url)}" data-status="error">
-          <summary class="summary--error">${pageLink(page.url, report.options.baseUrl)} <span class="tag tag--error">ERROR</span></summary>
-          <div class="details-content"><p class="error-msg">${escapeHtml(page.errorMessage ?? "Unknown error")}</p></div>
-        </details>`;
-      }
-
-      if (page.violations.length === 0) {
-        return `<details data-url="${escapeHtml(page.url)}" data-status="passed">
-          <summary class="summary--pass">${pageLink(page.url, report.options.baseUrl)} <span class="tag tag--pass">0 issues</span></summary>
-          <div class="details-content"><p class="no-issues">No violations found.</p></div>
-        </details>`;
-      }
-
-      const violationRows = page.violations
-        .map(
-          (v) => `<tr class="${v.outcome === "failed" ? "failed" : "cant-tell"}">
+  const violationsTable = (result: PageResult): string => {
+    if (result.status === "error") {
+      return `<p class="error-msg">${escapeHtml(result.errorMessage ?? "Unknown error")}</p>`;
+    }
+    if (result.violations.length === 0) {
+      return `<p class="no-issues">No violations found.</p>`;
+    }
+    const rows = result.violations
+      .map(
+        (v) => `<tr class="${v.outcome === "failed" ? "failed" : "cant-tell"}">
             <td><a href="${escapeHtml(v.howToFixUrl)}" target="_blank">${escapeHtml(v.ruleId)}</a></td>
             <td>${escapeHtml(v.wcagCriteria)}</td>
             <td><span class="tag tag--${v.outcome === "failed" ? "failed" : "cant-tell"}">${v.outcome}</span></td>
             <td class="xpath">${escapeHtml(v.elementXPath)}</td>
             <td><code>${escapeHtml(v.elementTag)}</code></td>
             <td><pre class="html-snippet">${escapeHtml(v.elementHtml)}</pre></td>
-            <td>${formatMessageHtml(v.diagnosticMessage, page.engine)}</td>
-          </tr>`
-        )
-        .join("\n");
+            <td>${formatMessageHtml(v.diagnosticMessage, result.engine)}</td>
+          </tr>`,
+      )
+      .join("\n");
+    return `<table>
+            <thead><tr><th>Rule</th><th>WCAG</th><th>Outcome</th><th>XPath</th><th>Tag</th><th>Element HTML</th><th>Message</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+  };
 
-      const label =
-        failCount > 0
-          ? `<span class="tag tag--failed">${failCount} failed</span>`
-          : `<span class="tag tag--cant-tell">${cantTellCount} cantTell</span>`;
-
-      const pageStatus = failCount > 0 ? "failed" : "canttell";
-
-      const consoleSection = page.consoleMessages.length > 0
-        ? `<details class="console-log">
-            <summary>Console (${page.consoleMessages.length})</summary>
+  const consoleBlock = (result: PageResult): string =>
+    result.consoleMessages.length > 0
+      ? `<details class="console-log">
+            <summary>Console (${result.consoleMessages.length})</summary>
             <div class="details-content">
               <table>
                 <thead><tr><th>Type</th><th>Message</th></tr></thead>
-                <tbody>${page.consoleMessages.map((m) =>
-                  `<tr class="console-${m.type}"><td>${escapeHtml(m.type)}</td><td>${escapeHtml(m.text)}</td></tr>`
-                ).join("")}</tbody>
+                <tbody>${result.consoleMessages
+                  .map((m) => `<tr class="console-${m.type}"><td>${escapeHtml(m.type)}</td><td>${escapeHtml(m.text)}</td></tr>`)
+                  .join("")}</tbody>
               </table>
             </div>
           </details>`
-        : "";
+      : "";
 
-      return `<details data-url="${escapeHtml(page.url)}" data-status="${pageStatus}">
+  const engineBadge = (result: PageResult): string => {
+    const name = shortName(result.engine);
+    const failCount = result.violations.filter((v) => v.outcome === "failed").length;
+    const cantTellCount = result.violations.filter((v) => v.outcome === "cantTell").length;
+    if (result.status === "error") return `<span class="tag tag--error">${name} ERROR</span>`;
+    if (failCount > 0) return `<span class="tag tag--failed">${name} ${failCount} failed</span>`;
+    if (cantTellCount > 0) return `<span class="tag tag--cant-tell">${name} ${cantTellCount} cantTell</span>`;
+    return `<span class="tag tag--pass">${name} 0</span>`;
+  };
+
+  let pageDetails: string;
+  if (isBoth) {
+    // group flat pages by URL, preserving first-seen order
+    const groups = new Map<string, PageResult[]>();
+    for (const p of report.pages) {
+      const arr = groups.get(p.url) ?? [];
+      arr.push(p);
+      groups.set(p.url, arr);
+    }
+    pageDetails = [...groups.entries()]
+      .map(([url, results]) => {
+        const status = worstStatus(results);
+        const engines = results.map((r) => r.engine).join(" ");
+        const badges = results.map((r) => engineBadge(r)).join(" ");
+        const blocks = results
+          .map(
+            (r) =>
+              `<div class="engine-block" data-engine="${r.engine}">
+              <h3 class="engine-heading">${escapeHtml(engineInfo(r.engine).name)}</h3>
+              ${violationsTable(r)}
+              ${consoleBlock(r)}
+            </div>`,
+          )
+          .join("\n");
+        return `<details data-url="${escapeHtml(url)}" data-status="${status}" data-engines="${escapeHtml(engines)}">
+          <summary>${pageLink(url, report.options.baseUrl)} ${badges}</summary>
+          <div class="details-content">${blocks}</div>
+        </details>`;
+      })
+      .join("\n");
+  } else {
+    pageDetails = report.pages
+      .map((page) => {
+        const failCount = page.violations.filter((v) => v.outcome === "failed").length;
+        const cantTellCount = page.violations.filter((v) => v.outcome === "cantTell").length;
+
+        if (page.status === "error") {
+          return `<details data-url="${escapeHtml(page.url)}" data-status="error">
+          <summary class="summary--error">${pageLink(page.url, report.options.baseUrl)} <span class="tag tag--error">ERROR</span></summary>
+          <div class="details-content"><p class="error-msg">${escapeHtml(page.errorMessage ?? "Unknown error")}</p></div>
+        </details>`;
+        }
+        if (page.violations.length === 0) {
+          return `<details data-url="${escapeHtml(page.url)}" data-status="passed">
+          <summary class="summary--pass">${pageLink(page.url, report.options.baseUrl)} <span class="tag tag--pass">0 issues</span></summary>
+          <div class="details-content"><p class="no-issues">No violations found.</p></div>
+        </details>`;
+        }
+        const label =
+          failCount > 0
+            ? `<span class="tag tag--failed">${failCount} failed</span>`
+            : `<span class="tag tag--cant-tell">${cantTellCount} cantTell</span>`;
+        const pageStatus = failCount > 0 ? "failed" : "canttell";
+        return `<details data-url="${escapeHtml(page.url)}" data-status="${pageStatus}">
         <summary>${pageLink(page.url, report.options.baseUrl)} ${label}${cantTellCount > 0 && failCount > 0 ? ` <span class="tag tag--cant-tell">${cantTellCount} cantTell</span>` : ""}</summary>
-        <div class="details-content">
-          <table>
-            <thead><tr><th>Rule</th><th>WCAG</th><th>Outcome</th><th>XPath</th><th>Tag</th><th>Element HTML</th><th>Message</th></tr></thead>
-            <tbody>${violationRows}</tbody>
-          </table>
-        </div>
-        ${consoleSection}
+        <div class="details-content">${violationsTable(page)}${consoleBlock(page)}</div>
       </details>`;
-    })
-    .join("\n");
+      })
+      .join("\n");
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -527,6 +587,10 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     .filter-btn { padding: 6px 12px; border: 1px solid #ccc; border-radius: 5px; background: #fff; cursor: pointer; font-size: 0.82em; color: #555; }
     .filter-btn.active { background: #003057; color: #fff; border-color: #003057; }
     .filter-count { font-size: 0.82em; color: #888; white-space: nowrap; }
+    .engine-block { margin-bottom: 14px; }
+    .engine-block:last-child { margin-bottom: 0; }
+    .engine-heading { color: #003057; font-size: 0.9em; margin: 10px 14px 6px; padding-top: 6px; border-top: 1px solid #eee; }
+    .engine-block:first-child .engine-heading { border-top: none; padding-top: 0; }
   </style>
 </head>
 <body>
@@ -566,11 +630,13 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
       <button class="filter-btn"        data-filter="canttell" onclick="setFilter(this)">cantTell</button>
       <button class="filter-btn"        data-filter="passed" onclick="setFilter(this)">Passed</button>
     </div>
+    ${engineFilterButtons}
     <span id="filter-count" class="filter-count"></span>
   </div>
   <div id="page-details">${pageDetails}</div>
   <script>
     let activeFilter = 'all';
+    let activeEngine = 'all';
     function applyFilters() {
       const query = document.getElementById('url-search').value.toLowerCase();
       const items = document.querySelectorAll('#page-details details');
@@ -580,16 +646,32 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
         const status = el.dataset.status || '';
         const matchUrl = !query || url.includes(query);
         const matchStatus = activeFilter === 'all' || status === activeFilter;
-        const show = matchUrl && matchStatus;
+        let hasVisibleEngine = true;
+        const blocks = el.querySelectorAll('.engine-block');
+        if (blocks.length) {
+          hasVisibleEngine = false;
+          blocks.forEach(b => {
+            const show = activeEngine === 'all' || b.dataset.engine === activeEngine;
+            b.style.display = show ? '' : 'none';
+            if (show) hasVisibleEngine = true;
+          });
+        }
+        const show = matchUrl && matchStatus && hasVisibleEngine;
         el.style.display = show ? '' : 'none';
         if (show) visible++;
       });
       document.getElementById('filter-count').textContent = visible + ' of ' + items.length + ' pages';
     }
     function setFilter(btn) {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.filter-btn:not(.engine-btn)').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeFilter = btn.dataset.filter;
+      applyFilters();
+    }
+    function setEngine(btn) {
+      document.querySelectorAll('.engine-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeEngine = btn.dataset.engineFilter;
       applyFilters();
     }
     applyFilters();

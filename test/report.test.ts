@@ -159,4 +159,26 @@ describe("writeHTML both-engine structure", () => {
     const htmlOpena11yOn = await renderHtml(pagesWithCantTell, makeOptions({ showWarningsOpena11y: true }));
     expect(htmlOpena11yOn).to.contain("OpenA11y Needs Review");
   });
+
+  it("groups by URL with one details per URL and per-engine sub-blocks", async () => {
+    const html = await renderHtml(bothPages, makeOptions());
+    // exactly one details for the single URL
+    const detailsCount = (html.match(/data-url="https:\/\/x\.test\/a"/g) || []).length;
+    expect(detailsCount).to.equal(1);
+    expect(html).to.contain('class="engine-block" data-engine="alfa"');
+    expect(html).to.contain('class="engine-block" data-engine="opena11y"');
+    // engine filter buttons present in both mode
+    expect(html).to.contain('data-engine-filter="alfa"');
+    expect(html).to.contain('data-engine-filter="opena11y"');
+    // OpenA11y @term@ rendered as <code> inside its sub-table
+    expect(html).to.contain("<code>navigation</code>");
+  });
+
+  it("omits the engine filter in single-engine mode", async () => {
+    const html = await renderHtml(
+      [page({ engine: "opena11y", violations: [viol()] })],
+      makeOptions({ engine: "opena11y" }),
+    );
+    expect(html).to.not.contain("data-engine-filter");
+  });
 });
