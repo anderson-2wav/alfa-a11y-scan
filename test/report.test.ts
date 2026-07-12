@@ -1,5 +1,8 @@
 import { expect } from "chai";
-import { buildReport } from "../src/report.js";
+import { buildReport, writeReport } from "../src/report.js";
+import { readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CliOptions, PageResult, ViolationRecord } from "../src/types.js";
 
 function makeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
@@ -96,5 +99,47 @@ describe("buildReport per-engine aggregation", () => {
     expect(report.summary.engines).to.deep.equal(["opena11y"]);
     expect(report.summary.byEngine.alfa).to.equal(undefined);
     expect(report.summary.totalPages).to.equal(1);
+  });
+});
+
+describe("writeHTML both-engine structure", () => {
+  async function renderHtml(pages: PageResult[], options: CliOptions): Promise<string> {
+    const out = join(tmpdir(), `stage6-html-${Math.abs(hashStr(JSON.stringify(pages)))}`);
+    const report = buildReport(pages, { ...options, output: out, format: "html" }, "https://x.test/sitemap.xml", 3);
+    await writeReport(report, report.options);
+    const html = await readFile(`${out}.html`, "utf-8");
+    await rm(`${out}.html`, { force: true });
+    return html;
+  }
+  // deterministic filename without Date.now/Math.random
+  function hashStr(s: string): number {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return h;
+  }
+
+  const bothPages: PageResult[] = [
+    page({ url: "https://x.test/a", engine: "alfa", violations: [viol({ ruleId: "sia-r69", diagnosticMessage: "contrast" })] }),
+    page({ url: "https://x.test/a", engine: "opena11y", violations: [viol({ ruleId: "COLOR_1", diagnosticMessage: "the @navigation@ landmark" })] }),
+  ];
+
+  it("shows dual attribution and two top-violations tables in both mode", async () => {
+    const html = await renderHtml(bothPages, makeOptions());
+    expect(html).to.contain("Siteimprove Alfa + OpenA11y Evaluation Library");
+    expect(html).to.contain("Top Alfa Violations");
+    expect(html).to.contain("Top OpenA11y Violations");
+    // per-engine violation cards
+    expect(html).to.contain("Alfa Violations");
+    expect(html).to.contain("OpenA11y Violations");
+  });
+
+  it("keeps single-engine HTML to one top table and no dual attribution", async () => {
+    const html = await renderHtml(
+      [page({ engine: "opena11y", violations: [viol()] })],
+      makeOptions({ engine: "opena11y" }),
+    );
+    expect(html).to.not.contain("Top Alfa Violations");
+    expect(html).to.not.contain(" + OpenA11y Evaluation Library");
+    expect(html).to.contain("Most Common Violations");
   });
 });

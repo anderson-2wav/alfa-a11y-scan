@@ -344,38 +344,64 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 
   const s = report.summary;
   const primaryEngine: EngineName = report.options.engine === "both" ? "alfa" : report.options.engine;
-  const showWarnings =
-    report.options.engine === "opena11y"
-      ? report.options.showWarningsOpena11y
-      : report.options.showWarningsAlfa;
+  const isBoth = report.options.engine === "both";
 
-  const summaryCards = `
-    <div class="summary-grid">
-      <div class="card">
-        <div class="card-value">${s.totalPages}</div>
-        <div class="card-label">Pages Scanned</div>
-      </div>
-      <div class="card ${s.pagesWithErrors > 0 ? "card--error" : ""}">
-        <div class="card-value">${s.pagesWithErrors}</div>
-        <div class="card-label">Pages With Errors</div>
-      </div>
-      <div class="card ${s.totalViolations > 0 ? "card--error" : "card--good"}">
-        <div class="card-value">${s.totalViolations}</div>
-        <div class="card-label">Total Violations (failed)</div>
-      </div>
-      ${showWarnings ? `<div class="card ${s.totalCantTell > 0 ? "card--warn" : ""}">
-        <div class="card-value">${s.totalCantTell}</div>
-        <div class="card-label">Needs Review (cantTell)</div>
-      </div>` : ""}
-    </div>`;
+  const attribution = isBoth
+    ? "Siteimprove Alfa + OpenA11y Evaluation Library"
+    : engineInfo(primaryEngine).name;
 
-  const topViolationsRows = s.violationsByRule
-    .slice(0, 20)
-    .map(
-      (v) =>
-        `<tr><td><a href="${escapeHtml(engineInfo(primaryEngine).ruleUrl(v.ruleId))}" target="_blank">${escapeHtml(v.ruleId)}</a></td><td>${escapeHtml(v.ruleTitle)}</td><td>${v.count}</td></tr>`
-    )
-    .join("\n");
+  const card = (value: number | string, label: string, cls = "") =>
+    `<div class="card ${cls}"><div class="card-value">${value}</div><div class="card-label">${escapeHtml(label)}</div></div>`;
+
+  const engineWarn = (engine: EngineName) =>
+    engine === "opena11y" ? report.options.showWarningsOpena11y : report.options.showWarningsAlfa;
+
+  let cards: string[];
+  if (isBoth) {
+    cards = [
+      card(s.totalPages, "Pages Scanned"),
+      card(s.pagesWithErrors, "Pages With Errors", s.pagesWithErrors > 0 ? "card--error" : ""),
+    ];
+    for (const engine of s.engines) {
+      const es = s.byEngine[engine]!;
+      const name = engineInfo(engine).name === "Siteimprove Alfa" ? "Alfa" : "OpenA11y";
+      cards.push(card(es.totalViolations, `${name} Violations`, es.totalViolations > 0 ? "card--error" : "card--good"));
+      if (engineWarn(engine)) {
+        cards.push(card(es.totalCantTell, `${name} Needs Review`, es.totalCantTell > 0 ? "card--warn" : ""));
+      }
+    }
+  } else {
+    const showWarnings = engineWarn(primaryEngine);
+    cards = [
+      card(s.totalPages, "Pages Scanned"),
+      card(s.pagesWithErrors, "Pages With Errors", s.pagesWithErrors > 0 ? "card--error" : ""),
+      card(s.totalViolations, "Total Violations (failed)", s.totalViolations > 0 ? "card--error" : "card--good"),
+    ];
+    if (showWarnings) {
+      cards.push(card(s.totalCantTell, "Needs Review (cantTell)", s.totalCantTell > 0 ? "card--warn" : ""));
+    }
+  }
+  const summaryCards = `\n    <div class="summary-grid">\n      ${cards.join("\n      ")}\n    </div>`;
+
+  const topTable = (engine: EngineName, rules: Array<{ ruleId: string; ruleTitle: string; count: number }>) => {
+    if (rules.length === 0) return "<p>No violations found.</p>";
+    const rows = rules
+      .slice(0, 20)
+      .map(
+        (v) =>
+          `<tr><td><a href="${escapeHtml(engineInfo(engine).ruleUrl(v.ruleId))}" target="_blank">${escapeHtml(v.ruleId)}</a></td><td>${escapeHtml(v.ruleTitle)}</td><td>${v.count}</td></tr>`,
+      )
+      .join("\n");
+    return `<table>\n    <thead><tr><th>Rule ID</th><th>Rule Title</th><th>Count</th></tr></thead>\n    <tbody>${rows}</tbody>\n  </table>`;
+  };
+
+  const shortName = (engine: EngineName) => (engine === "alfa" ? "Alfa" : "OpenA11y");
+
+  const topViolationsSection = isBoth
+    ? s.engines
+        .map((engine) => `<h2>Top ${shortName(engine)} Violations</h2>\n  ${topTable(engine, s.byEngine[engine]!.violationsByRule)}`)
+        .join("\n\n  ")
+    : `<h2>Most Common Violations</h2>\n  ${topTable(primaryEngine, s.violationsByRule)}`;
 
   const pageDetails = report.pages
     .map((page) => {
@@ -509,14 +535,18 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     Generated: ${escapeHtml(report.generatedAt)} &nbsp;|&nbsp;
     Elapsed: ${escapeHtml(formatDuration(report.durationMs))} &nbsp;|&nbsp;
     Source: ${report.sourceUrl.startsWith("http") ? `<a href="${escapeHtml(report.sourceUrl)}" target="_blank">${escapeHtml(report.sourceUrl)}</a>` : escapeHtml(report.sourceUrl)} &nbsp;|&nbsp;
-    Engine: ${escapeHtml(engineInfo(primaryEngine).name)} &nbsp;|&nbsp;
+    Engine: ${escapeHtml(attribution)} &nbsp;|&nbsp;
     WCAG Level: ${escapeHtml(formatWcagLevel(report.options.engine, report.options.wcagLevel))}
     ${report.options.onlyRules.length > 0 ? ` &nbsp;|&nbsp; Only rules: ${escapeHtml(report.options.onlyRules.join(", "))}` : ""}
     ${report.options.ignoreRules.length > 0 ? ` &nbsp;|&nbsp; Ignored rules: ${escapeHtml(report.options.ignoreRules.join(", "))}` : ""}
   </p>
   <p class="about">
-    This report was generated using the open source <a href="${escapeHtml(engineInfo(primaryEngine).homepage)}" target="_blank">${escapeHtml(engineInfo(primaryEngine).name)}</a>
-    accessibility code checker. Each page is evaluated in a fully-rendered headless browser so that
+    This report was generated using ${
+      isBoth
+        ? `two open source accessibility code checkers, <a href="${escapeHtml(engineInfo("alfa").homepage)}" target="_blank">${escapeHtml(engineInfo("alfa").name)}</a> and <a href="${escapeHtml(engineInfo("opena11y").homepage)}" target="_blank">${escapeHtml(engineInfo("opena11y").name)}</a>`
+        : `the open source <a href="${escapeHtml(engineInfo(primaryEngine).homepage)}" target="_blank">${escapeHtml(engineInfo(primaryEngine).name)}</a> accessibility code checker`
+    }.
+    Each page is evaluated in a fully-rendered headless browser so that
     client-side JavaScript is executed before analysis — producing results that reflect the actual DOM
     seen by assistive technologies, rather than the raw HTML source. Rules are evaluated against
     WCAG ${escapeHtml(formatWcagLevel(report.options.engine, report.options.wcagLevel))} success criteria.
@@ -524,15 +554,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
 
   ${summaryCards}
 
-  <h2>Most Common Violations</h2>
-  ${
-    s.violationsByRule.length > 0
-      ? `<table>
-    <thead><tr><th>Rule ID</th><th>Rule Title</th><th>Count</th></tr></thead>
-    <tbody>${topViolationsRows}</tbody>
-  </table>`
-      : "<p>No violations found.</p>"
-  }
+  ${topViolationsSection}
 
   <h2>Results by Page</h2>
   <div class="filter-bar">
