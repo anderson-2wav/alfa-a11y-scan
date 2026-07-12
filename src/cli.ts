@@ -24,6 +24,7 @@ import { chromium } from "playwright";
 import pLimit from "p-limit";
 import { fetchSitemapUrls } from "./sitemap.js";
 import { auditPage } from "./auditor.js";
+import { auditPageOpenA11y } from "./opena11y-auditor.js";
 import { buildReport, writeReport, formatDuration } from "./report.js";
 import type { CliOptions, PageResult } from "./types.js";
 
@@ -41,6 +42,10 @@ const argv = await yargs(hideBin(process.argv))
     choices: ["csv", "xlsx", "json", "html"] as const,
     default: "csv" as const,
     describe: "Output format",
+  })
+  .option("engine", {
+    choices: ["alfa", "opena11y"] as const,
+    describe: "Accessibility engine to use (default: alfa)",
   })
   .option("concurrency", {
     alias: "c",
@@ -138,6 +143,12 @@ const options: CliOptions = {
   baseUrl: argv["base-url"] ?? process.env.BASE_URL,
   output: argv.output,
   format: argv.format,
+  engine: (() => {
+    const raw = argv.engine ?? process.env.ENGINE ?? "alfa";
+    if (raw !== "alfa" && raw !== "opena11y")
+      throw new Error(`Invalid ENGINE "${raw}" — expected "alfa" or "opena11y".`);
+    return raw;
+  })(),
   concurrency: argv.concurrency ?? Number(process.env.CONCURRENCY ?? 3),
   filter: argv.filter ?? process.env.FILTER,
   timeout: argv.timeout,
@@ -226,7 +237,7 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(`Starting audit with concurrency=${options.concurrency}...\n`);
+  console.log(`Starting audit with engine=${options.engine} concurrency=${options.concurrency}...\n`);
 
   if (options.consoleLogFile) {
     await fs.writeFile(options.consoleLogFile, `Scan started: ${new Date().toISOString()}\nSource: ${sourceUrl}\n\n`);
@@ -259,7 +270,9 @@ async function main(): Promise<void> {
       if (options.verbose) {
         process.stdout.write(`[${index + 1}/${urls.length}] Checking: ${url}\n`);
       }
-      const result = await auditPage(browser, url, options);
+      const result = options.engine === "opena11y"
+        ? await auditPageOpenA11y(browser, url, options)
+        : await auditPage(browser, url, options);
       results[index] = result;
       completed++;
 

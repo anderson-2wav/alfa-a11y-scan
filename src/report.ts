@@ -21,6 +21,40 @@ import { join, dirname } from "path";
 import ExcelJS from "exceljs";
 import type { AuditReport, CliOptions, PageResult, ViolationRecord } from "./types.js";
 
+const ENGINE_INFO = {
+  alfa: {
+    name: "Siteimprove Alfa",
+    homepage: "https://github.com/Siteimprove/alfa",
+    ruleUrl: (id: string) => `https://alfa.siteimprove.com/rules/${id}`,
+  },
+  opena11y: {
+    name: "OpenA11y Evaluation Library",
+    homepage: "https://opena11y.github.io/evaluation-library/",
+    // COLOR_1 → rule-color-1.html
+    ruleUrl: (id: string) =>
+      `https://opena11y.github.io/evaluation-library/rule-${id.toLowerCase().replace(/_/g, "-")}.html`,
+  },
+} as const;
+
+function engineInfo(options: CliOptions) {
+  return ENGINE_INFO[options.engine] ?? ENGINE_INFO.alfa;
+}
+
+// OpenA11Y diagnostic messages mark code terms with @…@ (e.g. "the
+// @navigation@ landmark"). Strip the delimiters for plain-text formats;
+// formatMessageHtml renders them as <code> instead. Alfa messages are
+// left untouched — the @…@ convention is engine-specific.
+function formatMessagePlain(message: string, options: CliOptions): string {
+  if (options.engine !== "opena11y") return message;
+  return message.replace(/@([^@\n]+)@/g, "$1");
+}
+
+function formatMessageHtml(message: string, options: CliOptions): string {
+  const escaped = escapeHtml(message);
+  if (options.engine !== "opena11y") return escaped;
+  return escaped.replace(/@([^@\n]+)@/g, "<code>$1</code>");
+}
+
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.round(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -139,7 +173,7 @@ async function writeCSV(report: AuditReport, outputPath: string): Promise<void> 
           v.elementXPath,
           v.elementTag,
           v.elementHtml,
-          v.diagnosticMessage,
+          formatMessagePlain(v.diagnosticMessage, report.options),
           v.howToFixUrl,
         ])
       );
@@ -161,7 +195,8 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   summarySheet.addRow(["Generated", report.generatedAt]);
   summarySheet.addRow(["Elapsed Time", formatDuration(report.durationMs)]);
   summarySheet.addRow(["Source", report.sourceUrl]);
-  summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options.wcagLevel)]);
+  summarySheet.addRow(["Engine", engineInfo(report.options).name]);
+  summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options)]);
   if (report.options.onlyRules.length > 0)
     summarySheet.addRow(["Only Rules", report.options.onlyRules.join(", ")]);
   if (report.options.ignoreRules.length > 0)
@@ -169,7 +204,7 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   summarySheet.addRow([]);
   summarySheet.addRow([
     "About",
-    "This report was generated using Siteimprove Alfa, an open-source accessibility code checker. " +
+    `This report was generated using ${engineInfo(report.options).name}, an open-source accessibility code checker. ` +
     "Each page is evaluated in a fully-rendered headless browser so client-side JavaScript executes " +
     "before analysis, producing results that reflect the actual DOM seen by assistive technologies.",
   ]);
@@ -220,7 +255,10 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
       row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD6F5D6" } };
     } else {
       for (const v of page.violations) {
-        const row = sheet.addRow(v);
+        const row = sheet.addRow({
+          ...v,
+          diagnosticMessage: formatMessagePlain(v.diagnosticMessage, report.options),
+        });
         if (v.outcome === "failed") {
           row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFDCDC" } };
         } else {
@@ -307,7 +345,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     .slice(0, 20)
     .map(
       (v) =>
-        `<tr><td><a href="https://alfa.siteimprove.com/rules/${escapeHtml(v.ruleId)}" target="_blank">${escapeHtml(v.ruleId)}</a></td><td>${escapeHtml(v.ruleTitle)}</td><td>${v.count}</td></tr>`
+        `<tr><td><a href="${escapeHtml(engineInfo(report.options).ruleUrl(v.ruleId))}" target="_blank">${escapeHtml(v.ruleId)}</a></td><td>${escapeHtml(v.ruleTitle)}</td><td>${v.count}</td></tr>`
     )
     .join("\n");
 
@@ -339,7 +377,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
             <td class="xpath">${escapeHtml(v.elementXPath)}</td>
             <td><code>${escapeHtml(v.elementTag)}</code></td>
             <td><pre class="html-snippet">${escapeHtml(v.elementHtml)}</pre></td>
-            <td>${escapeHtml(v.diagnosticMessage)}</td>
+            <td>${formatMessageHtml(v.diagnosticMessage, report.options)}</td>
           </tr>`
         )
         .join("\n");
@@ -443,16 +481,17 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     Generated: ${escapeHtml(report.generatedAt)} &nbsp;|&nbsp;
     Elapsed: ${escapeHtml(formatDuration(report.durationMs))} &nbsp;|&nbsp;
     Source: ${report.sourceUrl.startsWith("http") ? `<a href="${escapeHtml(report.sourceUrl)}" target="_blank">${escapeHtml(report.sourceUrl)}</a>` : escapeHtml(report.sourceUrl)} &nbsp;|&nbsp;
-    WCAG Level: ${escapeHtml(formatWcagLevel(report.options.wcagLevel))}
+    Engine: ${escapeHtml(engineInfo(report.options).name)} &nbsp;|&nbsp;
+    WCAG Level: ${escapeHtml(formatWcagLevel(report.options))}
     ${report.options.onlyRules.length > 0 ? ` &nbsp;|&nbsp; Only rules: ${escapeHtml(report.options.onlyRules.join(", "))}` : ""}
     ${report.options.ignoreRules.length > 0 ? ` &nbsp;|&nbsp; Ignored rules: ${escapeHtml(report.options.ignoreRules.join(", "))}` : ""}
   </p>
   <p class="about">
-    This report was generated using the open source <a href="https://github.com/Siteimprove/alfa" target="_blank">Siteimprove Alfa</a>
+    This report was generated using the open source <a href="${escapeHtml(engineInfo(report.options).homepage)}" target="_blank">${escapeHtml(engineInfo(report.options).name)}</a>
     accessibility code checker. Each page is evaluated in a fully-rendered headless browser so that
     client-side JavaScript is executed before analysis — producing results that reflect the actual DOM
     seen by assistive technologies, rather than the raw HTML source. Rules are evaluated against
-    WCAG ${escapeHtml(formatWcagLevel(report.options.wcagLevel))} success criteria.
+    WCAG ${escapeHtml(formatWcagLevel(report.options))} success criteria.
   </p>
 
   ${summaryCards}
@@ -516,13 +555,12 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   await writeFile(`${outputPath}.html`, html, "utf-8");
 }
 
-function formatWcagLevel(level: string): string {
-  switch (level) {
-    case "a":   return "2.0 A";
-    case "aa":  return "2.1 AA";
-    case "aaa": return "2.1 AAA";
-    default:    return level.toUpperCase();
-  }
+function formatWcagLevel(options: CliOptions): string {
+  // OpenA11Y always runs the WCAG 2.1 ruleset (level genuinely filters);
+  // on the Alfa side, "a" approximates via the WCAG 2.0 AA filter.
+  const version =
+    options.engine !== "opena11y" && options.wcagLevel === "a" ? "2.0" : "2.1";
+  return `${version} ${options.wcagLevel.toUpperCase()}`;
 }
 
 function escapeHtml(str: string): string {
