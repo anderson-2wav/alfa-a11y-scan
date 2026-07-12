@@ -40,6 +40,10 @@ function engineInfo(engine: EngineName) {
   return ENGINE_INFO[engine] ?? ENGINE_INFO.alfa;
 }
 
+function shortName(engine: EngineName): string {
+  return engine === "alfa" ? "Alfa" : "OpenA11y";
+}
+
 // OpenA11Y diagnostic messages mark code terms with @…@ (e.g. "the
 // @navigation@ landmark"). Strip the delimiters for plain-text formats;
 // formatMessageHtml renders them as <code> instead. Alfa messages are
@@ -92,6 +96,8 @@ export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl:
     byEngine[engine] = {
       totalViolations: engineViolations.filter((v) => v.outcome === "failed").length,
       totalCantTell: engineViolations.filter((v) => v.outcome === "cantTell").length,
+      // Exposed for JSON consumers; not rendered in the HTML/XLSX summaries,
+      // which use the top-level distinct-URL error count instead.
       pagesWithErrors: enginePages.filter((p) => p.status === "error").length,
       violationsByRule: rankRules(engineViolations),
     };
@@ -248,15 +254,13 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   if (report.options.engine === "both") {
     for (const engine of s.engines) {
       const es = s.byEngine[engine]!;
-      const name = engine === "alfa" ? "Alfa" : "OpenA11y";
-      summarySheet.addRow([`${name} Violations (failed)`, es.totalViolations]);
-      summarySheet.addRow([`${name} CantTell`, es.totalCantTell]);
+      summarySheet.addRow([`${shortName(engine)} Violations (failed)`, es.totalViolations]);
+      summarySheet.addRow([`${shortName(engine)} CantTell`, es.totalCantTell]);
     }
     summarySheet.addRow([]);
     for (const engine of s.engines) {
       const es = s.byEngine[engine]!;
-      const name = engine === "alfa" ? "Alfa" : "OpenA11y";
-      summarySheet.addRow([`Most Common ${name} Violations`]);
+      summarySheet.addRow([`Most Common ${shortName(engine)} Violations`]);
       const hdr = summarySheet.addRow(["Rule ID", "Rule Title", "Count"]);
       hdr.font = { bold: true };
       for (const v of es.violationsByRule.slice(0, 20)) {
@@ -394,10 +398,9 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     ];
     for (const engine of s.engines) {
       const es = s.byEngine[engine]!;
-      const name = engineInfo(engine).name === "Siteimprove Alfa" ? "Alfa" : "OpenA11y";
-      cards.push(card(es.totalViolations, `${name} Violations`, es.totalViolations > 0 ? "card--error" : "card--good"));
+      cards.push(card(es.totalViolations, `${shortName(engine)} Violations`, es.totalViolations > 0 ? "card--error" : "card--good"));
       if (engineWarn(engine)) {
-        cards.push(card(es.totalCantTell, `${name} Needs Review`, es.totalCantTell > 0 ? "card--warn" : ""));
+        cards.push(card(es.totalCantTell, `${shortName(engine)} Needs Review`, es.totalCantTell > 0 ? "card--warn" : ""));
       }
     }
   } else {
@@ -424,8 +427,6 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
       .join("\n");
     return `<table>\n    <thead><tr><th>Rule ID</th><th>Rule Title</th><th>Count</th></tr></thead>\n    <tbody>${rows}</tbody>\n  </table>`;
   };
-
-  const shortName = (engine: EngineName) => (engine === "alfa" ? "Alfa" : "OpenA11y");
 
   const engineFilterButtons = isBoth
     ? `<div class="filter-buttons" role="group" aria-label="Filter by engine">
@@ -511,7 +512,6 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     pageDetails = [...groups.entries()]
       .map(([url, results]) => {
         const status = worstStatus(results);
-        const engines = results.map((r) => r.engine).join(" ");
         const badges = results.map((r) => engineBadge(r)).join(" ");
         const blocks = results
           .map(
@@ -523,7 +523,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
             </div>`,
           )
           .join("\n");
-        return `<details data-url="${escapeHtml(url)}" data-status="${status}" data-engines="${escapeHtml(engines)}">
+        return `<details data-url="${escapeHtml(url)}" data-status="${status}">
           <summary>${pageLink(url, report.options.baseUrl)} ${badges}</summary>
           <div class="details-content">${blocks}</div>
         </details>`;
@@ -668,6 +668,11 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     let activeFilter = 'all';
     let activeEngine = 'all';
     function applyFilters() {
+      // Note: data-status is the URL-level WORST status across engines (see
+      // worstStatus() in report.ts), not a per-engine status. Combining the
+      // engine filter with the status filter therefore reflects the group's
+      // overall status, not the status of the currently-visible engine block —
+      // a known limitation.
       const query = document.getElementById('url-search').value.toLowerCase();
       const items = document.querySelectorAll('#page-details details');
       let visible = 0;
