@@ -19,7 +19,7 @@ import { readFile, writeFile } from "fs/promises";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
 import ExcelJS from "exceljs";
-import type { AuditReport, CliOptions, PageResult, ViolationRecord } from "./types.js";
+import type { AuditReport, CliOptions, EngineName, EngineSummary, PageResult, ViolationRecord } from "./types.js";
 
 const ENGINE_INFO = {
   alfa: {
@@ -63,24 +63,45 @@ export function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
+function rankRules(
+  violations: ViolationRecord[],
+): Array<{ ruleId: string; ruleTitle: string; count: number }> {
+  const counts = new Map<string, { ruleTitle: string; count: number }>();
+  for (const v of violations) {
+    if (v.outcome !== "failed") continue;
+    const existing = counts.get(v.ruleId);
+    if (existing) existing.count++;
+    else counts.set(v.ruleId, { ruleTitle: v.ruleTitle, count: 1 });
+  }
+  return [...counts.entries()]
+    .map(([ruleId, { ruleTitle, count }]) => ({ ruleId, ruleTitle, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl: string, durationMs = 0): AuditReport {
   const allViolations = pages.flatMap((p) => p.violations);
 
-  const ruleCounts = new Map<string, { ruleTitle: string; count: number }>();
-  for (const v of allViolations) {
-    if (v.outcome === "failed") {
-      const existing = ruleCounts.get(v.ruleId);
-      if (existing) {
-        existing.count++;
-      } else {
-        ruleCounts.set(v.ruleId, { ruleTitle: v.ruleTitle, count: 1 });
-      }
-    }
+  // Deterministic engine order: alfa before opena11y, only those that ran.
+  const engines = (["alfa", "opena11y"] as EngineName[]).filter((e) =>
+    pages.some((p) => p.engine === e),
+  );
+
+  const byEngine: Partial<Record<EngineName, EngineSummary>> = {};
+  for (const engine of engines) {
+    const enginePages = pages.filter((p) => p.engine === engine);
+    const engineViolations = enginePages.flatMap((p) => p.violations);
+    byEngine[engine] = {
+      totalViolations: engineViolations.filter((v) => v.outcome === "failed").length,
+      totalCantTell: engineViolations.filter((v) => v.outcome === "cantTell").length,
+      pagesWithErrors: enginePages.filter((p) => p.status === "error").length,
+      violationsByRule: rankRules(engineViolations),
+    };
   }
 
-  const violationsByRule = [...ruleCounts.entries()]
-    .map(([ruleId, { ruleTitle, count }]) => ({ ruleId, ruleTitle, count }))
-    .sort((a, b) => b.count - a.count);
+  const distinctUrls = new Set(pages.map((p) => p.url));
+  const urlsWithError = new Set(
+    pages.filter((p) => p.status === "error").map((p) => p.url),
+  );
 
   return {
     generatedAt: new Date().toISOString(),
@@ -88,11 +109,13 @@ export function buildReport(pages: PageResult[], options: CliOptions, sourceUrl:
     durationMs,
     options,
     summary: {
-      totalPages: pages.length,
-      pagesWithErrors: pages.filter((p) => p.status === "error").length,
+      totalPages: distinctUrls.size,
+      pagesWithErrors: urlsWithError.size,
       totalViolations: allViolations.filter((v) => v.outcome === "failed").length,
       totalCantTell: allViolations.filter((v) => v.outcome === "cantTell").length,
-      violationsByRule,
+      violationsByRule: rankRules(allViolations),
+      engines,
+      byEngine,
     },
     pages,
   };

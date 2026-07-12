@@ -76,6 +76,13 @@ export interface PageResult {
   durationMs: number;
 }
 
+export interface EngineSummary {
+  totalViolations: number;
+  totalCantTell: number;
+  pagesWithErrors: number;
+  violationsByRule: Array<{ ruleId: string; ruleTitle: string; count: number }>;
+}
+
 export interface AuditReport {
   generatedAt: string;
   sourceUrl: string;
@@ -87,6 +94,8 @@ export interface AuditReport {
     totalViolations: number;
     totalCantTell: number;
     violationsByRule: Array<{ ruleId: string; ruleTitle: string; count: number }>;
+    engines: EngineName[];
+    byEngine: Partial<Record<EngineName, EngineSummary>>;
   };
   pages: PageResult[];
 }
