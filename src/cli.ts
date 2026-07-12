@@ -34,8 +34,7 @@ const argv = await yargs(hideBin(process.argv))
   .option("output", {
     alias: "o",
     type: "string",
-    default: "./report",
-    describe: "Output file path (without extension)",
+    describe: "Output file path without extension (default: ./report; OUTPUT env var)",
   })
   .option("format", {
     alias: "f",
@@ -136,20 +135,20 @@ const argv = await yargs(hideBin(process.argv))
     describe: "File path to write browser console output (relative paths resolve to cwd)",
   })
   .check((argv) => {
-    const hasSitemap = argv._.length > 0;
+    const hasSitemap = argv._.length > 0 || !!process.env.SITEMAP;
     const hasUrls = !!(argv.urls || process.env.URLS);
     if (!hasSitemap && !hasUrls)
-      throw new Error("Provide a sitemap URL (positional) or --urls / URLS env var (path to JSON file).");
+      throw new Error("Provide a sitemap URL (positional or SITEMAP env var) or --urls / URLS env var (path to JSON file).");
     return true;
   })
   .help()
   .parseAsync();
 
 const options: CliOptions = {
-  sitemapUrl: argv._.length > 0 ? String(argv._[0]) : undefined,
+  sitemapUrl: argv._.length > 0 ? String(argv._[0]) : process.env.SITEMAP,
   urlsFile: argv.urls ?? process.env.URLS,
   baseUrl: argv["base-url"] ?? process.env.BASE_URL,
-  output: argv.output,
+  output: argv.output ?? process.env.OUTPUT ?? "./report",
   format: argv.format,
   engine: (() => {
     const raw = argv.engine ?? process.env.ENGINE ?? "alfa";
