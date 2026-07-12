@@ -44,6 +44,13 @@ function shortName(engine: EngineName): string {
   return engine === "alfa" ? "Alfa" : "OpenA11y";
 }
 
+// Report title, prefixed with the configured site NAME when present.
+function reportTitle(options: CliOptions): string {
+  return options.name
+    ? `${options.name} Accessibility Scan Report`
+    : "Accessibility Scan Report";
+}
+
 // OpenA11Y diagnostic messages mark code terms with @…@ (e.g. "the
 // @navigation@ landmark"). Strip the delimiters for plain-text formats;
 // formatMessageHtml renders them as <code> instead. Alfa messages are
@@ -229,6 +236,9 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
     ? "Siteimprove Alfa + OpenA11y Evaluation Library"
     : engineInfo(report.options.engine).name;
 
+  const titleRow = summarySheet.addRow([reportTitle(report.options)]);
+  titleRow.font = { bold: true, size: 14 };
+  summarySheet.addRow([]);
   summarySheet.addRow(["Generated", report.generatedAt]);
   summarySheet.addRow(["Elapsed Time", formatDuration(report.durationMs)]);
   summarySheet.addRow(["Source", report.sourceUrl]);
@@ -239,15 +249,15 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   if (report.options.ignoreRules.length > 0)
     summarySheet.addRow(["Ignored Rules", report.options.ignoreRules.join(", ")]);
   summarySheet.addRow([]);
-  summarySheet.addRow([
+  const aboutRow = summarySheet.addRow([
     "About",
     `This report was generated using ${engineLabel}, an open-source accessibility code checker. ` +
     "Each page is evaluated in a fully-rendered headless browser so client-side JavaScript executes " +
     "before analysis, producing results that reflect the actual DOM seen by assistive technologies.",
   ]);
   summarySheet.getColumn(2).width = 90;
-  summarySheet.getRow(5).alignment = { wrapText: true };
-  summarySheet.getRow(5).height = 48;
+  aboutRow.alignment = { wrapText: true };
+  aboutRow.height = 48;
   summarySheet.addRow([]);
   summarySheet.addRow(["Total Pages", s.totalPages]);
   summarySheet.addRow(["Pages With Errors", s.pagesWithErrors]);
@@ -560,12 +570,14 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
       .join("\n");
   }
 
+  const title = reportTitle(report.options);
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Accessibility Scan Report — ${escapeHtml(report.sourceUrl)}</title>
+  <title>${escapeHtml(title)} — ${escapeHtml(report.sourceUrl)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; background: #f5f5f5; padding: 24px; }
@@ -624,7 +636,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   </style>
 </head>
 <body>
-  <h1>Accessibility Scan Report</h1>
+  <h1>${escapeHtml(title)}</h1>
   <p class="meta">
     Generated: ${escapeHtml(report.generatedAt)} &nbsp;|&nbsp;
     Elapsed: ${escapeHtml(formatDuration(report.durationMs))} &nbsp;|&nbsp;

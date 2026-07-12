@@ -124,6 +124,17 @@ describe("writeHTML both-engine structure", () => {
     page({ url: "https://x.test/a", engine: "opena11y", violations: [viol({ ruleId: "COLOR_1", diagnosticMessage: "the @navigation@ landmark" })] }),
   ];
 
+  it("prefixes the report title with options.name when set", async () => {
+    const html = await renderHtml(bothPages, makeOptions({ name: "NCRAN.org" }));
+    expect(html).to.contain("<title>NCRAN.org Accessibility Scan Report —");
+    expect(html).to.contain("<h1>NCRAN.org Accessibility Scan Report</h1>");
+  });
+
+  it("uses the plain report title when name is unset", async () => {
+    const html = await renderHtml(bothPages, makeOptions());
+    expect(html).to.contain("<h1>Accessibility Scan Report</h1>");
+  });
+
   it("shows dual attribution and two top-violations tables in both mode", async () => {
     const html = await renderHtml(bothPages, makeOptions());
     expect(html).to.contain("Siteimprove Alfa + OpenA11y Evaluation Library");
@@ -216,5 +227,14 @@ describe("CSV/XLSX engine column", () => {
     const results = wb.getWorksheet("Results")!;
     const headers = results.getRow(1).values as unknown[];
     expect(headers).to.include("Engine");
+  });
+
+  it("puts the name-prefixed title at the top of the XLSX Summary sheet", async () => {
+    const path = await render("xlsx", bothPages, makeOptions({ name: "NCRAN.org" }));
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(path);
+    await rm(path, { force: true });
+    const summary = wb.getWorksheet("Summary")!;
+    expect(summary.getRow(1).getCell(1).value).to.equal("NCRAN.org Accessibility Scan Report");
   });
 });

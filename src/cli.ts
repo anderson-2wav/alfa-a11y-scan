@@ -35,6 +35,10 @@ const argv = await yargs(hideBin(process.argv))
     type: "string",
     describe: "Output file path without extension (default: ./report; OUTPUT env var)",
   })
+  .option("name", {
+    type: "string",
+    describe: "Site name; prefixes the report title as \"<name> Accessibility Scan Report\" (NAME env var)",
+  })
   .option("format", {
     alias: "f",
     choices: ["csv", "xlsx", "json", "html"] as const,
@@ -76,8 +80,7 @@ const argv = await yargs(hideBin(process.argv))
   })
   .option("aria", {
     type: "boolean",
-    default: true,
-    describe: "Include WAI-ARIA authoring practice rules (default: true, matches Siteimprove scanner)",
+    describe: "Include WAI-ARIA authoring practice rules (default: true, matches Siteimprove scanner; INCLUDE_ARIA env)",
   })
   .option("verbose", {
     alias: "v",
@@ -147,6 +150,7 @@ const options: CliOptions = {
   sitemapUrl: argv._.length > 0 ? String(argv._[0]) : process.env.SITEMAP,
   urlsFile: argv.urls ?? process.env.URLS,
   baseUrl: argv["base-url"] ?? process.env.BASE_URL,
+  name: argv.name ?? process.env.NAME,
   output: argv.output ?? process.env.OUTPUT ?? "./report",
   format: argv.format,
   engine: (() => {
@@ -161,7 +165,7 @@ const options: CliOptions = {
   wait: argv.wait,
   pause: argv.pause,
   wcagLevel: argv["wcag-level"],
-  includeAria: argv.aria ?? process.env.INCLUDE_ARIA !== "false",
+  includeAria: argv.aria ?? (process.env.INCLUDE_ARIA !== "false"),
   verbose: argv.verbose,
   ignoreRules: process.env.IGNORE_RULES
     ? process.env.IGNORE_RULES.split(",").map((r) => r.trim()).filter(Boolean)

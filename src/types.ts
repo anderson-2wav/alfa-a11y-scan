@@ -19,6 +19,7 @@ export interface CliOptions {
   sitemapUrl?: string;
   urlsFile?: string;
   baseUrl?: string;
+  name?: string;
   output: string;
   format: "csv" | "xlsx" | "json" | "html";
   engine: EngineName | "both";
