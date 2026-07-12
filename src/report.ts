@@ -36,23 +36,22 @@ const ENGINE_INFO = {
   },
 } as const;
 
-function engineInfo(options: CliOptions) {
-  const engine = options.engine === "both" ? "alfa" : options.engine;
-  return ENGINE_INFO[engine];
+function engineInfo(engine: EngineName) {
+  return ENGINE_INFO[engine] ?? ENGINE_INFO.alfa;
 }
 
 // OpenA11Y diagnostic messages mark code terms with @…@ (e.g. "the
 // @navigation@ landmark"). Strip the delimiters for plain-text formats;
 // formatMessageHtml renders them as <code> instead. Alfa messages are
 // left untouched — the @…@ convention is engine-specific.
-function formatMessagePlain(message: string, options: CliOptions): string {
-  if (options.engine !== "opena11y") return message;
+function formatMessagePlain(message: string, engine: EngineName): string {
+  if (engine !== "opena11y") return message;
   return message.replace(/@([^@\n]+)@/g, "$1");
 }
 
-function formatMessageHtml(message: string, options: CliOptions): string {
+function formatMessageHtml(message: string, engine: EngineName): string {
   const escaped = escapeHtml(message);
-  if (options.engine !== "opena11y") return escaped;
+  if (engine !== "opena11y") return escaped;
   return escaped.replace(/@([^@\n]+)@/g, "<code>$1</code>");
 }
 
@@ -197,7 +196,7 @@ async function writeCSV(report: AuditReport, outputPath: string): Promise<void> 
           v.elementXPath,
           v.elementTag,
           v.elementHtml,
-          formatMessagePlain(v.diagnosticMessage, report.options),
+          formatMessagePlain(v.diagnosticMessage, page.engine),
           v.howToFixUrl,
         ])
       );
@@ -219,8 +218,8 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   summarySheet.addRow(["Generated", report.generatedAt]);
   summarySheet.addRow(["Elapsed Time", formatDuration(report.durationMs)]);
   summarySheet.addRow(["Source", report.sourceUrl]);
-  summarySheet.addRow(["Engine", engineInfo(report.options).name]);
-  summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options)]);
+  summarySheet.addRow(["Engine", engineInfo(report.options.engine === "both" ? "alfa" : report.options.engine).name]);
+  summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options.engine, report.options.wcagLevel)]);
   if (report.options.onlyRules.length > 0)
     summarySheet.addRow(["Only Rules", report.options.onlyRules.join(", ")]);
   if (report.options.ignoreRules.length > 0)
@@ -228,7 +227,7 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   summarySheet.addRow([]);
   summarySheet.addRow([
     "About",
-    `This report was generated using ${engineInfo(report.options).name}, an open-source accessibility code checker. ` +
+    `This report was generated using ${engineInfo(report.options.engine === "both" ? "alfa" : report.options.engine).name}, an open-source accessibility code checker. ` +
     "Each page is evaluated in a fully-rendered headless browser so client-side JavaScript executes " +
     "before analysis, producing results that reflect the actual DOM seen by assistive technologies.",
   ]);
@@ -281,7 +280,7 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
       for (const v of page.violations) {
         const row = sheet.addRow({
           ...v,
-          diagnosticMessage: formatMessagePlain(v.diagnosticMessage, report.options),
+          diagnosticMessage: formatMessagePlain(v.diagnosticMessage, page.engine),
         });
         if (v.outcome === "failed") {
           row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFDCDC" } };
@@ -344,6 +343,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   const logoDataUri = logoBase64 ? `data:image/svg+xml;base64,${logoBase64}` : "";
 
   const s = report.summary;
+  const primaryEngine: EngineName = report.options.engine === "both" ? "alfa" : report.options.engine;
   const showWarnings =
     report.options.engine === "opena11y"
       ? report.options.showWarningsOpena11y
@@ -373,7 +373,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     .slice(0, 20)
     .map(
       (v) =>
-        `<tr><td><a href="${escapeHtml(engineInfo(report.options).ruleUrl(v.ruleId))}" target="_blank">${escapeHtml(v.ruleId)}</a></td><td>${escapeHtml(v.ruleTitle)}</td><td>${v.count}</td></tr>`
+        `<tr><td><a href="${escapeHtml(engineInfo(primaryEngine).ruleUrl(v.ruleId))}" target="_blank">${escapeHtml(v.ruleId)}</a></td><td>${escapeHtml(v.ruleTitle)}</td><td>${v.count}</td></tr>`
     )
     .join("\n");
 
@@ -405,7 +405,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
             <td class="xpath">${escapeHtml(v.elementXPath)}</td>
             <td><code>${escapeHtml(v.elementTag)}</code></td>
             <td><pre class="html-snippet">${escapeHtml(v.elementHtml)}</pre></td>
-            <td>${formatMessageHtml(v.diagnosticMessage, report.options)}</td>
+            <td>${formatMessageHtml(v.diagnosticMessage, page.engine)}</td>
           </tr>`
         )
         .join("\n");
@@ -509,17 +509,17 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     Generated: ${escapeHtml(report.generatedAt)} &nbsp;|&nbsp;
     Elapsed: ${escapeHtml(formatDuration(report.durationMs))} &nbsp;|&nbsp;
     Source: ${report.sourceUrl.startsWith("http") ? `<a href="${escapeHtml(report.sourceUrl)}" target="_blank">${escapeHtml(report.sourceUrl)}</a>` : escapeHtml(report.sourceUrl)} &nbsp;|&nbsp;
-    Engine: ${escapeHtml(engineInfo(report.options).name)} &nbsp;|&nbsp;
-    WCAG Level: ${escapeHtml(formatWcagLevel(report.options))}
+    Engine: ${escapeHtml(engineInfo(primaryEngine).name)} &nbsp;|&nbsp;
+    WCAG Level: ${escapeHtml(formatWcagLevel(report.options.engine, report.options.wcagLevel))}
     ${report.options.onlyRules.length > 0 ? ` &nbsp;|&nbsp; Only rules: ${escapeHtml(report.options.onlyRules.join(", "))}` : ""}
     ${report.options.ignoreRules.length > 0 ? ` &nbsp;|&nbsp; Ignored rules: ${escapeHtml(report.options.ignoreRules.join(", "))}` : ""}
   </p>
   <p class="about">
-    This report was generated using the open source <a href="${escapeHtml(engineInfo(report.options).homepage)}" target="_blank">${escapeHtml(engineInfo(report.options).name)}</a>
+    This report was generated using the open source <a href="${escapeHtml(engineInfo(primaryEngine).homepage)}" target="_blank">${escapeHtml(engineInfo(primaryEngine).name)}</a>
     accessibility code checker. Each page is evaluated in a fully-rendered headless browser so that
     client-side JavaScript is executed before analysis — producing results that reflect the actual DOM
     seen by assistive technologies, rather than the raw HTML source. Rules are evaluated against
-    WCAG ${escapeHtml(formatWcagLevel(report.options))} success criteria.
+    WCAG ${escapeHtml(formatWcagLevel(report.options.engine, report.options.wcagLevel))} success criteria.
   </p>
 
   ${summaryCards}
@@ -583,12 +583,11 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   await writeFile(`${outputPath}.html`, html, "utf-8");
 }
 
-function formatWcagLevel(options: CliOptions): string {
-  // OpenA11Y always runs the WCAG 2.1 ruleset (level genuinely filters);
-  // on the Alfa side, "a" approximates via the WCAG 2.0 AA filter.
-  const version =
-    options.engine !== "opena11y" && options.wcagLevel === "a" ? "2.0" : "2.1";
-  return `${version} ${options.wcagLevel.toUpperCase()}`;
+function formatWcagLevel(engine: CliOptions["engine"], wcagLevel: CliOptions["wcagLevel"]): string {
+  // Only Alfa's level-"a" is the WCAG 2.0 AA approximation; OpenA11y and
+  // "both" render 2.1. (In "both" mode this is a cosmetic report-wide label.)
+  const version = engine === "alfa" && wcagLevel === "a" ? "2.0" : "2.1";
+  return `${version} ${wcagLevel.toUpperCase()}`;
 }
 
 function escapeHtml(str: string): string {
