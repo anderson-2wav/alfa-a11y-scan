@@ -23,8 +23,7 @@ import { hideBin } from "yargs/helpers";
 import { chromium } from "playwright";
 import pLimit from "p-limit";
 import { fetchSitemapUrls } from "./sitemap.js";
-import { auditPage } from "./auditor.js";
-import { auditPageOpenA11y } from "./opena11y-auditor.js";
+import { auditUrl } from "./run-audit.js";
 import { buildReport, writeReport, formatDuration } from "./report.js";
 import type { CliOptions, PageResult } from "./types.js";
 
@@ -43,8 +42,8 @@ const argv = await yargs(hideBin(process.argv))
     describe: "Output format",
   })
   .option("engine", {
-    choices: ["alfa", "opena11y"] as const,
-    describe: "Accessibility engine to use (default: alfa)",
+    choices: ["alfa", "opena11y", "both"] as const,
+    describe: "Accessibility engine: alfa, opena11y, or both (default: alfa)",
   })
   .option("concurrency", {
     alias: "c",
@@ -152,8 +151,8 @@ const options: CliOptions = {
   format: argv.format,
   engine: (() => {
     const raw = argv.engine ?? process.env.ENGINE ?? "alfa";
-    if (raw !== "alfa" && raw !== "opena11y")
-      throw new Error(`Invalid ENGINE "${raw}" — expected "alfa" or "opena11y".`);
+    if (raw !== "alfa" && raw !== "opena11y" && raw !== "both")
+      throw new Error(`Invalid ENGINE "${raw}" — expected "alfa", "opena11y", or "both".`);
     return raw;
   })(),
   concurrency: argv.concurrency ?? Number(process.env.CONCURRENCY ?? 3),
@@ -261,7 +260,7 @@ async function main(): Promise<void> {
   const scanStart = Date.now();
   const browser = await chromium.launch({ headless: true });
   const limit = pLimit(options.concurrency);
-  const results: PageResult[] = new Array(urls.length);
+  const results: PageResult[][] = new Array(urls.length);
   let completed = 0;
   let stopFlag = false;
   let interrupted = false;
@@ -284,23 +283,26 @@ async function main(): Promise<void> {
       if (options.verbose) {
         process.stdout.write(`[${index + 1}/${urls.length}] Checking: ${url}\n`);
       }
-      const result = options.engine === "opena11y"
-        ? await auditPageOpenA11y(browser, url, options)
-        : await auditPage(browser, url, options);
-      results[index] = result;
+      const pageResults = await auditUrl(browser, url, options);
+      results[index] = pageResults;
       completed++;
 
       if (options.consoleLogFile) {
-        const header = `=== ${result.url} ===\n`;
-        const messages = result.consoleMessages.length > 0
-          ? result.consoleMessages.map((m) => `[${m.type}] ${m.text}`).join("\n") + "\n"
-          : "";
-        await fs.appendFile(options.consoleLogFile, header + messages + "\n");
+        for (const result of pageResults) {
+          const header = `=== [${result.engine}] ${result.url} ===\n`;
+          const messages = result.consoleMessages.length > 0
+            ? result.consoleMessages.map((m) => `[${m.type}] ${m.text}`).join("\n") + "\n"
+            : "";
+          await fs.appendFile(options.consoleLogFile, header + messages + "\n");
+        }
       }
 
-      if (options.stopOnFail && (result.status === "error" || result.violations.length > 0)) {
+      const failed = pageResults.find(
+        (r) => r.status === "error" || r.violations.length > 0,
+      );
+      if (options.stopOnFail && failed) {
         stopFlag = true;
-        console.log(`\nStopping scan: ${result.status === "error" ? "page error" : "violations found"} on ${url}`);
+        console.log(`\nStopping scan: ${failed.status === "error" ? "page error" : "violations found"} on ${url}`);
       }
 
       if (options.pause > 0) {
@@ -311,7 +313,7 @@ async function main(): Promise<void> {
         process.stdout.write(`  Progress: ${completed}/${urls.length}\n`);
       }
 
-      return result;
+      return pageResults;
     })
   );
 
@@ -319,7 +321,9 @@ async function main(): Promise<void> {
   await browser.close();
   process.removeListener("SIGINT", handleSigint);
 
-  const completedResults = results.filter((r): r is PageResult => r !== undefined);
+  const completedResults: PageResult[] = results
+    .filter((r): r is PageResult[] => r !== undefined)
+    .flat();
 
   if (interrupted) {
     console.log(`\nScan interrupted. ${completedResults.length} of ${urls.length} pages completed.`);
