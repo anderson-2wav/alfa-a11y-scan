@@ -158,6 +158,7 @@ async function writeCSV(report: AuditReport, outputPath: string): Promise<void> 
     "Element HTML",
     "Diagnostic Message",
     "How To Fix",
+    "Engine",
   ];
 
   const rows: string[] = [rowToCSV(headers)];
@@ -176,12 +177,14 @@ async function writeCSV(report: AuditReport, outputPath: string): Promise<void> 
           "",
           "",
           "",
+          "",
+          page.engine,
         ])
       );
       continue;
     }
     if (page.violations.length === 0) {
-      rows.push(rowToCSV([page.url, "", "", "", "", "passed", "", "", "", "", ""]));
+      rows.push(rowToCSV([page.url, "", "", "", "", "passed", "", "", "", "", "", page.engine]));
       continue;
     }
     for (const v of page.violations) {
@@ -198,6 +201,7 @@ async function writeCSV(report: AuditReport, outputPath: string): Promise<void> 
           v.elementHtml,
           formatMessagePlain(v.diagnosticMessage, page.engine),
           v.howToFixUrl,
+          page.engine,
         ])
       );
     }
@@ -215,10 +219,14 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   const summarySheet = workbook.addWorksheet("Summary");
   const s = report.summary;
 
+  const engineLabel = report.options.engine === "both"
+    ? "Siteimprove Alfa + OpenA11y Evaluation Library"
+    : engineInfo(report.options.engine).name;
+
   summarySheet.addRow(["Generated", report.generatedAt]);
   summarySheet.addRow(["Elapsed Time", formatDuration(report.durationMs)]);
   summarySheet.addRow(["Source", report.sourceUrl]);
-  summarySheet.addRow(["Engine", engineInfo(report.options.engine === "both" ? "alfa" : report.options.engine).name]);
+  summarySheet.addRow(["Engine", engineLabel]);
   summarySheet.addRow(["WCAG Level", formatWcagLevel(report.options.engine, report.options.wcagLevel)]);
   if (report.options.onlyRules.length > 0)
     summarySheet.addRow(["Only Rules", report.options.onlyRules.join(", ")]);
@@ -227,7 +235,7 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   summarySheet.addRow([]);
   summarySheet.addRow([
     "About",
-    `This report was generated using ${engineInfo(report.options.engine === "both" ? "alfa" : report.options.engine).name}, an open-source accessibility code checker. ` +
+    `This report was generated using ${engineLabel}, an open-source accessibility code checker. ` +
     "Each page is evaluated in a fully-rendered headless browser so client-side JavaScript executes " +
     "before analysis, producing results that reflect the actual DOM seen by assistive technologies.",
   ]);
@@ -237,17 +245,37 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   summarySheet.addRow([]);
   summarySheet.addRow(["Total Pages", s.totalPages]);
   summarySheet.addRow(["Pages With Errors", s.pagesWithErrors]);
-  summarySheet.addRow(["Total Violations (failed)", s.totalViolations]);
-  summarySheet.addRow(["Total CantTell", s.totalCantTell]);
-  summarySheet.addRow([]);
-  summarySheet.addRow(["Most Common Violations"]);
-
-  const headerRow = summarySheet.addRow(["Rule ID", "Rule Title", "Count"]);
-  headerRow.font = { bold: true };
-  for (const v of s.violationsByRule.slice(0, 20)) {
-    summarySheet.addRow([v.ruleId, v.ruleTitle, v.count]);
+  if (report.options.engine === "both") {
+    for (const engine of s.engines) {
+      const es = s.byEngine[engine]!;
+      const name = engine === "alfa" ? "Alfa" : "OpenA11y";
+      summarySheet.addRow([`${name} Violations (failed)`, es.totalViolations]);
+      summarySheet.addRow([`${name} CantTell`, es.totalCantTell]);
+    }
+    summarySheet.addRow([]);
+    for (const engine of s.engines) {
+      const es = s.byEngine[engine]!;
+      const name = engine === "alfa" ? "Alfa" : "OpenA11y";
+      summarySheet.addRow([`Most Common ${name} Violations`]);
+      const hdr = summarySheet.addRow(["Rule ID", "Rule Title", "Count"]);
+      hdr.font = { bold: true };
+      for (const v of es.violationsByRule.slice(0, 20)) {
+        summarySheet.addRow([v.ruleId, v.ruleTitle, v.count]);
+      }
+      summarySheet.addRow([]);
+    }
+  } else {
+    summarySheet.addRow(["Total Violations (failed)", s.totalViolations]);
+    summarySheet.addRow(["Total CantTell", s.totalCantTell]);
+    summarySheet.addRow([]);
+    summarySheet.addRow(["Most Common Violations"]);
+    const headerRow = summarySheet.addRow(["Rule ID", "Rule Title", "Count"]);
+    headerRow.font = { bold: true };
+    for (const v of s.violationsByRule.slice(0, 20)) {
+      summarySheet.addRow([v.ruleId, v.ruleTitle, v.count]);
+    }
   }
-  summarySheet.getColumn(1).width = 15;
+  summarySheet.getColumn(1).width = 30;
   summarySheet.getColumn(2).width = 50;
   summarySheet.getColumn(3).width = 10;
 
@@ -265,6 +293,7 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
     { header: "Element HTML", key: "elementHtml", width: 80 },
     { header: "Diagnostic Message", key: "diagnosticMessage", width: 75 },
     { header: "How To Fix", key: "howToFixUrl", width: 55 },
+    { header: "Engine", key: "engine", width: 12 },
   ];
 
   const xlsxHeader = sheet.getRow(1);
@@ -274,13 +303,14 @@ async function writeXLSX(report: AuditReport, outputPath: string): Promise<void>
   for (const page of report.pages) {
     if (page.status === "error") continue; // covered by Errors sheet
     if (page.violations.length === 0) {
-      const row = sheet.addRow({ pageUrl: page.url, outcome: "passed" });
+      const row = sheet.addRow({ pageUrl: page.url, outcome: "passed", engine: page.engine });
       row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD6F5D6" } };
     } else {
       for (const v of page.violations) {
         const row = sheet.addRow({
           ...v,
           diagnosticMessage: formatMessagePlain(v.diagnosticMessage, page.engine),
+          engine: page.engine,
         });
         if (v.outcome === "failed") {
           row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFDCDC" } };

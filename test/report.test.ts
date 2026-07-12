@@ -3,6 +3,7 @@ import { buildReport, writeReport } from "../src/report.js";
 import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import ExcelJS from "exceljs";
 import type { CliOptions, PageResult, ViolationRecord } from "../src/types.js";
 
 function makeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
@@ -180,5 +181,40 @@ describe("writeHTML both-engine structure", () => {
       makeOptions({ engine: "opena11y" }),
     );
     expect(html).to.not.contain("data-engine-filter");
+  });
+});
+
+describe("CSV/XLSX engine column", () => {
+  async function render(format: "csv" | "xlsx", pages: PageResult[], options: CliOptions) {
+    const out = join(tmpdir(), `stage6-${format}-${Math.abs(hashStr2(JSON.stringify(pages)))}`);
+    const report = buildReport(pages, { ...options, output: out, format }, "src", 1);
+    await writeReport(report, report.options);
+    return `${out}.${format}`;
+  }
+  function hashStr2(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+
+  const bothPages: PageResult[] = [
+    page({ url: "https://x.test/a", engine: "alfa", violations: [viol({ ruleId: "sia-r69" })] }),
+    page({ url: "https://x.test/a", engine: "opena11y", violations: [viol({ ruleId: "COLOR_1" })] }),
+  ];
+
+  it("adds an Engine column to CSV with per-row engine", async () => {
+    const path = await render("csv", bothPages, makeOptions());
+    const csv = await readFile(path, "utf-8");
+    await rm(path, { force: true });
+    const header = csv.split("\n")[0];
+    expect(header).to.contain("Engine");
+    expect(csv).to.contain("alfa");
+    expect(csv).to.contain("opena11y");
+  });
+
+  it("adds an Engine column to the XLSX Results sheet", async () => {
+    const path = await render("xlsx", bothPages, makeOptions());
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(path);
+    await rm(path, { force: true });
+    const results = wb.getWorksheet("Results")!;
+    const headers = results.getRow(1).values as unknown[];
+    expect(headers).to.include("Engine");
   });
 });
