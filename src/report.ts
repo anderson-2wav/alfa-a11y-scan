@@ -320,6 +320,10 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
   const logoDataUri = logoBase64 ? `data:image/svg+xml;base64,${logoBase64}` : "";
 
   const s = report.summary;
+  const showWarnings =
+    report.options.engine === "opena11y"
+      ? report.options.showWarningsOpena11y
+      : report.options.showWarningsAlfa;
 
   const summaryCards = `
     <div class="summary-grid">
@@ -335,7 +339,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
         <div class="card-value">${s.totalViolations}</div>
         <div class="card-label">Total Violations (failed)</div>
       </div>
-      ${report.options.showWarnings ? `<div class="card ${s.totalCantTell > 0 ? "card--warn" : ""}">
+      ${showWarnings ? `<div class="card ${s.totalCantTell > 0 ? "card--warn" : ""}">
         <div class="card-value">${s.totalCantTell}</div>
         <div class="card-label">Needs Review (cantTell)</div>
       </div>` : ""}

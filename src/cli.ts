@@ -123,6 +123,14 @@ const argv = await yargs(hideBin(process.argv))
     type: "string",
     describe: "Comma-separated rule IDs to include (all others are excluded), e.g. sia-r55,sia-r81",
   })
+  .option("warnings-alfa", {
+    type: "boolean",
+    describe: "Include Alfa cantTell results (needs-review warnings) in the report (default: true)",
+  })
+  .option("warnings-opena11y", {
+    type: "boolean",
+    describe: "Include OpenA11Y manual checks/warnings (cantTell) in the report (default: false)",
+  })
   .option("console-log-file", {
     type: "string",
     describe: "File path to write browser console output (relative paths resolve to cwd)",
@@ -164,7 +172,14 @@ const options: CliOptions = {
     const raw = argv["only-rules"] ?? process.env.ONLY_RULES;
     return raw ? raw.split(",").map((r) => r.trim()).filter(Boolean) : [];
   })(),
-  showWarnings: process.env.WARNINGS === "true",
+  // Precedence: CLI flag > env var > hardcoded default. Alfa cantTell warnings
+  // are useful and default on; OpenA11Y manual checks are voluminous and default off.
+  showWarningsAlfa:
+    argv["warnings-alfa"] ??
+    (process.env.WARNINGS_ALFA !== undefined ? process.env.WARNINGS_ALFA === "true" : true),
+  showWarningsOpena11y:
+    argv["warnings-opena11y"] ??
+    (process.env.WARNINGS_OPENA11Y !== undefined ? process.env.WARNINGS_OPENA11Y === "true" : false),
   jwtToken: argv["jwt-token"] ?? process.env.JWT_TOKEN,
   jwtCookieName: argv["jwt-cookie-name"] ?? process.env.JWT_COOKIE_NAME ?? "token",
   consoleLogFile: (() => {

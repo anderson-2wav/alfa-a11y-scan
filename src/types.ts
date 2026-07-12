@@ -32,7 +32,8 @@ export interface CliOptions {
   verbose: boolean;
   ignoreRules: string[];
   onlyRules: string[];
-  showWarnings: boolean;
+  showWarningsAlfa: boolean;
+  showWarningsOpena11y: boolean;
   jwtToken?: string;
   jwtCookieName: string;
   captureConsole: boolean;

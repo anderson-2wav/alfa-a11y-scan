@@ -120,7 +120,7 @@ export async function auditPage(
       (v) =>
         !options.ignoreRules.includes(v.ruleId) &&
         (options.onlyRules.length === 0 || options.onlyRules.includes(v.ruleId)) &&
-        (options.showWarnings || v.outcome === "failed")
+        (options.showWarningsAlfa || v.outcome === "failed")
     );
     violations.forEach((v) => { v.wcagLevel = wcagLevelDisplay; });
 
