@@ -21,7 +21,7 @@ export interface CliOptions {
   baseUrl?: string;
   output: string;
   format: "csv" | "xlsx" | "json" | "html";
-  engine: "alfa" | "opena11y";
+  engine: EngineName | "both";
   concurrency: number;
   filter?: string;
   timeout: number;

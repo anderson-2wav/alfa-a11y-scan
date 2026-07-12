@@ -37,7 +37,8 @@ const ENGINE_INFO = {
 } as const;
 
 function engineInfo(options: CliOptions) {
-  return ENGINE_INFO[options.engine] ?? ENGINE_INFO.alfa;
+  const engine = options.engine === "both" ? "alfa" : options.engine;
+  return ENGINE_INFO[engine];
 }
 
 // OpenA11Y diagnostic messages mark code terms with @…@ (e.g. "the
