@@ -72,6 +72,7 @@ describe("opena11y auditor", function () {
 
     expect(result.status).to.equal("ok");
     expect(result.url).to.equal(`${baseUrl}/`);
+    expect(result.engine).to.equal("opena11y");
     expect(result.durationMs).to.be.greaterThan(0);
     expect(result.failedRules).to.be.greaterThan(0);
     expect(result.passedRules).to.be.greaterThan(0);

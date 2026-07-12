@@ -182,6 +182,7 @@ export async function auditPage(
 
     return {
       url,
+      engine: "alfa",
       status: "ok",
       violations,
       consoleMessages,
@@ -199,6 +200,7 @@ export async function auditPage(
     }
     return {
       url,
+      engine: "alfa",
       status: "error",
       errorMessage: err instanceof Error ? err.message : String(err),
       violations: [],

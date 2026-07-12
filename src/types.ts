@@ -42,6 +42,8 @@ export interface CliOptions {
   stopOnFail: boolean;
 }
 
+export type EngineName = "alfa" | "opena11y";
+
 export interface ConsoleMessage {
   type: "log" | "warn" | "error";
   text: string;
@@ -63,6 +65,7 @@ export interface ViolationRecord {
 
 export interface PageResult {
   url: string;
+  engine: EngineName;
   status: "ok" | "error";
   errorMessage?: string;
   violations: ViolationRecord[];

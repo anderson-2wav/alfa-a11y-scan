@@ -225,6 +225,7 @@ export async function auditPageOpenA11y(
 
     return {
       url,
+      engine: "opena11y",
       status: "ok",
       violations,
       consoleMessages,
@@ -242,6 +243,7 @@ export async function auditPageOpenA11y(
     }
     return {
       url,
+      engine: "opena11y",
       status: "error",
       errorMessage: errMsg,
       violations: [],
