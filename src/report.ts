@@ -524,7 +524,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
         const pageStatus = failCount > 0 ? "failed" : "canttell";
         return `<details data-url="${escapeHtml(page.url)}" data-status="${pageStatus}">
         <summary>${pageLink(page.url, report.options.baseUrl)} ${label}${cantTellCount > 0 && failCount > 0 ? ` <span class="tag tag--cant-tell">${cantTellCount} cantTell</span>` : ""}</summary>
-        <div class="details-content">${violationsTable(page)}${consoleBlock(page)}</div>
+        <div class="details-content">${violationsTable(page)}</div>${consoleBlock(page)}
       </details>`;
       })
       .join("\n");
