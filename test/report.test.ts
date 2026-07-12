@@ -142,4 +142,21 @@ describe("writeHTML both-engine structure", () => {
     expect(html).to.not.contain(" + OpenA11y Evaluation Library");
     expect(html).to.contain("Most Common Violations");
   });
+
+  it("gates per-engine cantTell cards on warnings flags", async () => {
+    // Fixtures with cantTell violations for both engines on the same URL
+    const pagesWithCantTell: PageResult[] = [
+      page({ url: "https://x.test/a", engine: "alfa", violations: [viol({ outcome: "cantTell" })] }),
+      page({ url: "https://x.test/a", engine: "opena11y", violations: [viol({ outcome: "cantTell" })] }),
+    ];
+
+    // Test 1: With defaults (showWarningsAlfa: true, showWarningsOpena11y: false)
+    const htmlDefault = await renderHtml(pagesWithCantTell, makeOptions());
+    expect(htmlDefault).to.contain("Alfa Needs Review");
+    expect(htmlDefault).to.not.contain("OpenA11y Needs Review");
+
+    // Test 2: With showWarningsOpena11y enabled
+    const htmlOpena11yOn = await renderHtml(pagesWithCantTell, makeOptions({ showWarningsOpena11y: true }));
+    expect(htmlOpena11yOn).to.contain("OpenA11y Needs Review");
+  });
 });
