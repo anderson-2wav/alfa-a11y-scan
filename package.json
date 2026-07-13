@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.private/.env.ncran --max-old-space-size=8192 --import tsx src/cli.ts -f html -v --wait 4000 --timeout 30000",
+    "start": "node --env-file=.env --max-old-space-size=8192 --import tsx src/cli.ts -f html -v --wait 4000 --timeout 30000",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "test": "mocha",
