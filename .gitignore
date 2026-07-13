@@ -1,6 +1,5 @@
 node_modules
 .env
-.claude
 .idea
 # output files
 *.html
@@ -10,3 +9,5 @@ node_modules
 .DS_Store
 .private
 reference
+_attic
+
