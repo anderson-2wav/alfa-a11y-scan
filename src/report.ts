@@ -522,6 +522,11 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     pageDetails = [...groups.entries()]
       .map(([url, results]) => {
         const status = worstStatus(results);
+        // Per-engine status so the status filter can scope to one engine
+        // (a page can be "failed" overall but clean for a given engine).
+        const engineStatusAttrs = results
+          .map((r) => `data-status-${r.engine}="${worstStatus([r])}"`)
+          .join(" ");
         const badges = results.map((r) => engineBadge(r)).join(" ");
         const blocks = results
           .map(
@@ -533,7 +538,7 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
             </div>`,
           )
           .join("\n");
-        return `<details data-url="${escapeHtml(url)}" data-status="${status}">
+        return `<details data-url="${escapeHtml(url)}" data-status="${status}" ${engineStatusAttrs}>
           <summary>${pageLink(url, report.options.baseUrl)} ${badges}</summary>
           <div class="details-content">${blocks}</div>
         </details>`;
@@ -680,17 +685,21 @@ async function writeHTML(report: AuditReport, outputPath: string): Promise<void>
     let activeFilter = 'all';
     let activeEngine = 'all';
     function applyFilters() {
-      // Note: data-status is the URL-level WORST status across engines (see
-      // worstStatus() in report.ts), not a per-engine status. Combining the
-      // engine filter with the status filter therefore reflects the group's
-      // overall status, not the status of the currently-visible engine block —
-      // a known limitation.
+      // When a specific engine is selected, the status filter is scoped to that
+      // engine's own status (data-status-<engine>) so you can isolate, e.g.,
+      // "pages where Alfa found violations". With engine = All, it uses the
+      // URL-level worst status across engines (data-status).
       const query = document.getElementById('url-search').value.toLowerCase();
-      const items = document.querySelectorAll('#page-details details');
+      // Direct children only — each page group is a <details>; the > guards
+      // against counting nested <details> (e.g. the per-page console-log blocks).
+      const items = document.querySelectorAll('#page-details > details');
       let visible = 0;
       items.forEach(el => {
         const url = (el.dataset.url || '').toLowerCase();
-        const status = el.dataset.status || '';
+        const statusKey = activeEngine === 'all'
+          ? 'status'
+          : 'status' + activeEngine.charAt(0).toUpperCase() + activeEngine.slice(1);
+        const status = el.dataset[statusKey] || el.dataset.status || '';
         const matchUrl = !query || url.includes(query);
         const matchStatus = activeFilter === 'all' || status === activeFilter;
         let hasVisibleEngine = true;

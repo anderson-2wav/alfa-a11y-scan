@@ -124,6 +124,23 @@ describe("writeHTML both-engine structure", () => {
     page({ url: "https://x.test/a", engine: "opena11y", violations: [viol({ ruleId: "COLOR_1", diagnosticMessage: "the @navigation@ landmark" })] }),
   ];
 
+  it("emits per-engine status attributes on each URL group in both mode", async () => {
+    const pages: PageResult[] = [
+      page({ url: "https://x.test/a", engine: "alfa", violations: [viol({ ruleId: "sia-r62" })] }),
+      page({ url: "https://x.test/a", engine: "opena11y", violations: [] }),
+      page({ url: "https://x.test/b", engine: "alfa", violations: [] }),
+      page({ url: "https://x.test/b", engine: "opena11y", violations: [viol({ ruleId: "COLOR_1" })] }),
+    ];
+    const html = await renderHtml(pages, makeOptions());
+    const tagA = html.match(/<details data-url="https:\/\/x\.test\/a"[^>]*>/)![0];
+    expect(tagA, "group A open tag").to.contain('data-status="failed"');
+    expect(tagA, "group A alfa status").to.contain('data-status-alfa="failed"');
+    expect(tagA, "group A opena11y status").to.contain('data-status-opena11y="passed"');
+    const tagB = html.match(/<details data-url="https:\/\/x\.test\/b"[^>]*>/)![0];
+    expect(tagB, "group B alfa status").to.contain('data-status-alfa="passed"');
+    expect(tagB, "group B opena11y status").to.contain('data-status-opena11y="failed"');
+  });
+
   it("prefixes the report title with options.name when set", async () => {
     const html = await renderHtml(bothPages, makeOptions({ name: "NCRAN.org" }));
     expect(html).to.contain("<title>NCRAN.org Accessibility Scan Report —");
